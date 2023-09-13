@@ -1,0 +1,7 @@
+/target
+/.vscode
+
+# to allow testing sites in-repo
+/build
+/content
+/theme

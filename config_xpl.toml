@@ -1,0 +1,3 @@
+[defaults."blog/*"]
+path = "blog/{date.year}/{date.month}/{date.day}/{slug}/"
+template = "blog_article.html"

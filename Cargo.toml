@@ -1,0 +1,40 @@
+[package]
+name = "hinoki"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["markdown"]
+
+# Markdown to HTML support
+markdown = ["dep:pulldown-cmark"]
+
+# Allow JSON files to be loaded with load_data
+json = ["dep:serde_json"]
+# Allow YAML files to be loaded with load_data
+yaml = ["dep:serde_yaml"]
+
+# Development server (`hinoki serve`) support, not yet working
+dev-server = ["dep:tower-http"]
+
+[dependencies]
+anyhow = "1.0.75"
+bumpalo-herd = "0.1.2"
+camino = { version = "1.1.6", features = ["serde1"] }
+chrono = { version = "0.4.31", default-features = false, features = ["serde"] }
+clap = { version = "4.4.3", features = ["derive"] }
+fs-err = "2.9.0"
+globset = { version = "0.4.13", default-features = false }
+indexmap = { version = "2.0.2", features = ["serde"] }
+itertools = "0.11.0"
+minijinja = "1.0.7"
+pulldown-cmark = { version = "0.9.3", optional = true }
+rayon = "1.8.0"
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = { version = "1.0.107", optional = true }
+serde_yaml = { version = "0.9.25", optional = true }
+toml = "0.8.0"
+tower-http = { version = "0.4.4", optional = true }
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+walkdir = "2.4.0"
