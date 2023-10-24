@@ -44,6 +44,7 @@ pub(crate) struct Frontmatter {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum ProcessContent {
     MarkdownToHtml,
 }

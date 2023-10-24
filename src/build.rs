@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, io::BufReader, sync::mpsc};
+use std::{
+    collections::BTreeMap,
+    io::{BufReader, Read},
+    sync::mpsc,
+};
 
 use anyhow::{format_err, Context as _};
 use bumpalo_herd::Herd;
@@ -11,20 +15,25 @@ use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
 use walkdir::WalkDir;
 
-use crate::{cli::BuildArgs, config::Config, frontmatter::parse_frontmatter, template};
+use crate::{
+    cli::BuildArgs,
+    config::Config,
+    frontmatter::{parse_frontmatter, ProcessContent},
+    template,
+};
 
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
 
-    let mut build = ProcessContent::new(args, config, template_env);
+    let mut build = ContentProcessor::new(args, config, template_env);
     fs::create_dir_all("build")?;
     build.run()?;
 
     Ok(())
 }
 
-struct ProcessContent<'a> {
+struct ContentProcessor<'a> {
     args: BuildArgs,
     config: Config,
     template_env: minijinja::Environment<'a>,
@@ -106,7 +115,7 @@ fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
     Ok(template_env)
 }
 
-impl<'a> ProcessContent<'a> {
+impl<'a> ContentProcessor<'a> {
     fn new(args: BuildArgs, config: Config, template_env: minijinja::Environment<'a>) -> Self {
         Self { args, config, template_env, has_errors: false }
     }
@@ -189,6 +198,13 @@ impl<'a> ProcessContent<'a> {
             }
         };
 
+        let mut content = String::new();
+        input_file.read_to_string(&mut content)?;
+
+        if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
+            // TODO
+        }
+
         let page_path = frontmatter.path.unwrap_or(page_path);
         let page_meta = PageMetadata {
             draft: frontmatter.draft,
@@ -206,7 +222,7 @@ impl<'a> ProcessContent<'a> {
         let template = self
             .template_env
             .get_template(frontmatter.template.context("no template specified")?.as_str())?;
-        let ctx = RenderContext { page: &page_meta };
+        let ctx = RenderContext { content: &content, page: &page_meta };
         let output_file = File::create(output_path)?;
         template.render_to_write(ctx, output_file)?;
 
@@ -254,5 +270,6 @@ impl AssetMetadata {
 
 #[derive(Serialize)]
 struct RenderContext<'a> {
+    content: &'a str,
     page: &'a PageMetadata,
 }

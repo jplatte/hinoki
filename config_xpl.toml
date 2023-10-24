@@ -1,3 +1,6 @@
+[defaults."*.md"]
+process_content = "markdown_to_html"
+
 [defaults."blog/*"]
 path = "blog/{date.year}/{date.month}/{date.day}/{slug}/"
 template = "blog_article.html"
