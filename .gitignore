@@ -2,6 +2,7 @@
 /.vscode
 
 # to allow testing sites in-repo
-/build
-/content
-/theme
+/build/
+/content/
+/theme/
+/config.toml
