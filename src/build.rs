@@ -1,5 +1,6 @@
+mod metadata;
+
 use std::{
-    collections::BTreeMap,
     io::{BufReader, Read},
     sync::mpsc,
 };
@@ -7,7 +8,6 @@ use std::{
 use anyhow::{format_err, Context as _};
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::{DateTime, Utc};
 use fs_err::{self as fs, File};
 use itertools::{Either, Itertools};
 use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
@@ -21,6 +21,8 @@ use crate::{
     frontmatter::{parse_frontmatter, ProcessContent},
     template,
 };
+
+use self::metadata::{AssetMetadata, DirectoryMetadata, FileMetadata, PageMetadata};
 
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
@@ -232,39 +234,6 @@ impl<'a> ContentProcessor<'a> {
     pub(crate) fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
         // TODO: Honor self.config.path_patterns, maybe using matchit?
         Utf8Path::new("build").join(page_path)
-    }
-}
-
-#[derive(Debug)]
-struct DirectoryMetadata {
-    subdirs: BTreeMap<String, DirectoryMetadata>,
-    pages: Vec<PageMetadata>,
-    assets: Vec<AssetMetadata>,
-}
-
-#[derive(Debug)]
-enum FileMetadata {
-    Page(PageMetadata),
-    Asset(AssetMetadata),
-}
-
-#[derive(Debug, Serialize)]
-struct PageMetadata {
-    draft: bool,
-    slug: String,
-    path: Utf8PathBuf,
-    title: Option<String>,
-    date: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug)]
-struct AssetMetadata {
-    path: Utf8PathBuf,
-}
-
-impl AssetMetadata {
-    fn new(path: Utf8PathBuf) -> Self {
-        Self { path }
     }
 }
 
