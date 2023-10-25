@@ -1,4 +1,5 @@
 [defaults."*.md"]
+# allow multiple content passes (e.g. expand templates, markdown to html)?
 process_content = "markdown_to_html"
 
 [defaults."blog/*"]

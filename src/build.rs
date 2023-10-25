@@ -203,8 +203,23 @@ impl<'a> ContentProcessor<'a> {
         let mut content = String::new();
         input_file.read_to_string(&mut content)?;
 
+        #[cfg(feature = "markdown")]
         if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
-            // TODO
+            use pulldown_cmark::{html::push_html, Parser};
+
+            let parser = Parser::new(&content);
+            let mut html_buf = String::new();
+            push_html(&mut html_buf, parser);
+
+            content = html_buf;
+        }
+
+        #[cfg(not(feature = "markdown"))]
+        if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
+            anyhow::bail!(
+                "hinoki was compiled without support for markdown.\
+                 Please recompile with the 'markdown' feature enabled."
+            );
         }
 
         let page_path = frontmatter.path.unwrap_or(page_path);
