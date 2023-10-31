@@ -7,8 +7,14 @@ use crate::content::ProcessContent;
 
 #[derive(Default, Deserialize)]
 pub(crate) struct Config {
+    #[serde(default = "default_output_dir")]
+    pub output_dir: Utf8PathBuf,
     #[serde(default)]
     pub defaults: Defaults,
+}
+
+fn default_output_dir() -> Utf8PathBuf {
+    "build".into()
 }
 
 pub(crate) struct Defaults {

@@ -16,7 +16,7 @@ use walkdir::WalkDir;
 use crate::{cli::BuildArgs, config::Config, template};
 
 use self::{
-    frontmatter::parse_frontmatter,
+    frontmatter::{parse_frontmatter, Frontmatter},
     metadata::{AssetMetadata, DirectoryMetadata, FileMetadata, PageMetadata},
 };
 
@@ -189,34 +189,38 @@ impl<'a> ContentProcessor<'a> {
     }
 
     #[instrument(skip(self, write_output))]
-    pub(crate) fn process_content_file(
+    fn process_content_file(
         &self,
         content_path: &Utf8Path,
         write_output: WriteOutput,
     ) -> anyhow::Result<FileMetadata> {
         let page_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
-        let output_path = self.output_path(&page_path);
 
         let mut input_file = BufReader::new(File::open(content_path)?);
 
-        let frontmatter = match parse_frontmatter(&mut input_file)? {
-            Some(meta) => meta,
+        Ok(match parse_frontmatter(&mut input_file)? {
+            Some(frontmatter) => FileMetadata::Page(self.process_page(
+                page_path,
+                frontmatter,
+                write_output,
+                input_file,
+            )?),
             None => {
                 drop(input_file);
 
-                if let WriteOutput::Yes = write_output {
-                    debug!("copying file without frontmatter verbatim");
-                    // todo: keep track of dirs created to avoid extra create_dir_all's?
-                    fs::create_dir_all(output_path.parent().unwrap())?;
-                    fs::copy(content_path, output_path)?;
-                }
-
-                return Ok(FileMetadata::Asset(AssetMetadata::new(page_path)));
+                FileMetadata::Asset(self.process_asset(write_output, page_path, content_path)?)
             }
-        };
+        })
+    }
 
-        let page_path = frontmatter.path.unwrap_or(page_path);
+    fn process_page(
+        &self,
+        page_path: Utf8PathBuf,
+        frontmatter: Frontmatter,
+        write_output: WriteOutput,
+        mut input_file: BufReader<File>,
+    ) -> Result<PageMetadata, anyhow::Error> {
         let page_meta = PageMetadata {
             draft: frontmatter.draft,
             slug: frontmatter.slug.unwrap_or_else(|| {
@@ -225,12 +229,22 @@ impl<'a> ContentProcessor<'a> {
                 trace!("Slug for `{page_path}` is `{slug}`");
                 slug
             }),
-            path: page_path,
+            path: frontmatter.path.unwrap_or(page_path),
             title: frontmatter.title,
             date: frontmatter.date,
         };
 
         if let WriteOutput::Yes = write_output {
+            #[cfg(not(feature = "markdown"))]
+            if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
+                anyhow::bail!(
+                    "hinoki was compiled without support for markdown.\
+                     Please recompile with the 'markdown' feature enabled."
+                );
+            }
+
+            let output_path = self.output_path(&page_meta.path);
+
             let mut content = String::new();
             input_file.read_to_string(&mut content)?;
 
@@ -245,14 +259,6 @@ impl<'a> ContentProcessor<'a> {
                 content = html_buf;
             }
 
-            #[cfg(not(feature = "markdown"))]
-            if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
-                anyhow::bail!(
-                    "hinoki was compiled without support for markdown.\
-                     Please recompile with the 'markdown' feature enabled."
-                );
-            }
-
             let template = self
                 .template_env
                 .get_template(frontmatter.template.context("no template specified")?.as_str())?;
@@ -261,12 +267,29 @@ impl<'a> ContentProcessor<'a> {
             template.render_to_write(ctx, output_file)?;
         }
 
-        Ok(FileMetadata::Page(page_meta))
+        Ok(page_meta)
     }
 
-    pub(crate) fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
-        // TODO: Honor self.config.path_patterns, maybe using matchit?
-        Utf8Path::new("build").join(page_path)
+    fn process_asset(
+        &self,
+        write_output: WriteOutput,
+        page_path: Utf8PathBuf,
+        content_path: &Utf8Path,
+    ) -> Result<AssetMetadata, anyhow::Error> {
+        if let WriteOutput::Yes = write_output {
+            let output_path = self.output_path(&page_path);
+
+            debug!("copying file without frontmatter verbatim");
+            // todo: keep track of dirs created to avoid extra create_dir_all's?
+            fs::create_dir_all(output_path.parent().unwrap())?;
+            fs::copy(content_path, output_path)?;
+        }
+
+        Ok(AssetMetadata::new(page_path))
+    }
+
+    fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
+        self.config.output_dir.join(page_path)
     }
 }
 
