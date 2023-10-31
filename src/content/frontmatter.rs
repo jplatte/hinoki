@@ -5,13 +5,14 @@ use camino::Utf8PathBuf;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
+use crate::config::DefaultsForPath;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Frontmatter {
     /// If set to `true`, this page will only be included in the output if
     /// building in dev mode.
-    #[serde(default)]
-    pub draft: bool,
+    pub draft: Option<bool>,
 
     /// Path of the template to use for this page.
     ///
@@ -43,7 +44,30 @@ pub(crate) struct Frontmatter {
     pub slug: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+impl Frontmatter {
+    pub(crate) fn apply_defaults(&mut self, defaults: &DefaultsForPath) {
+        if self.path.is_none() {
+            self.path = defaults.path.clone();
+        }
+        if self.template.is_none() {
+            self.template = defaults.template.clone();
+        }
+        if self.process_content.is_none() {
+            self.process_content = defaults.process_content;
+        }
+        if self.title.is_none() {
+            self.title = defaults.title.clone();
+        }
+        if self.date.is_none() {
+            self.date = defaults.date;
+        }
+        if self.slug.is_none() {
+            self.slug = defaults.slug.clone();
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ProcessContent {
     MarkdownToHtml,

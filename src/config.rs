@@ -1,4 +1,5 @@
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
+use chrono::{DateTime, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use indexmap::{indexmap, IndexMap};
 use serde::{de, Deserialize, Deserializer};
@@ -32,6 +33,13 @@ impl Defaults {
         let values = map.into_values().collect();
         Ok(Self { values, globset })
     }
+
+    pub(crate) fn for_path(
+        &self,
+        path: &Utf8Path,
+    ) -> impl Iterator<Item = &DefaultsForPath> + DoubleEndedIterator {
+        self.globset.matches(path).into_iter().map(|idx| &self.values[idx])
+    }
 }
 
 impl Default for Defaults {
@@ -58,7 +66,10 @@ impl<'de> Deserialize<'de> for Defaults {
 
 #[derive(Default, Deserialize)]
 pub(crate) struct DefaultsForPath {
-    pub path: Option<String>,
+    pub path: Option<Utf8PathBuf>,
     pub template: Option<Utf8PathBuf>,
     pub process_content: Option<ProcessContent>,
+    pub title: Option<String>,
+    pub date: Option<DateTime<Utc>>,
+    pub slug: Option<String>,
 }

@@ -217,18 +217,27 @@ impl<'a> ContentProcessor<'a> {
     fn process_page(
         &self,
         page_path: Utf8PathBuf,
-        frontmatter: Frontmatter,
+        mut frontmatter: Frontmatter,
         write_output: WriteOutput,
         mut input_file: BufReader<File>,
     ) -> Result<PageMetadata, anyhow::Error> {
+        // Apply defaults for any field that's not set.
+        //
+        // Iterate in reverse so fields from further down the config take
+        // precedence (more specific rules must come after less specific ones).
+        for defaults in self.config.defaults.for_path(&page_path).rev() {
+            frontmatter.apply_defaults(defaults);
+        }
+
         let page_meta = PageMetadata {
-            draft: frontmatter.draft,
+            draft: frontmatter.draft.unwrap_or(false),
             slug: frontmatter.slug.unwrap_or_else(|| {
                 trace!("Generating slug for `{page_path}`");
                 let slug = page_path.file_stem().expect("path must have a file name").to_owned();
                 trace!("Slug for `{page_path}` is `{slug}`");
                 slug
             }),
+            // TODO: template processing on the path, title
             path: frontmatter.path.unwrap_or(page_path),
             title: frontmatter.title,
             date: frontmatter.date,
