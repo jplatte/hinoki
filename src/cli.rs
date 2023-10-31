@@ -7,6 +7,7 @@ pub(crate) struct CliArgs {
 #[derive(clap::Subcommand)]
 pub(crate) enum Command {
     Build(BuildArgs),
+    DumpMetadata,
     Serve,
 }
 

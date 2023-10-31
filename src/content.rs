@@ -29,19 +29,18 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
 
-    let mut build = ContentProcessor::new(args, config, template_env);
     fs::create_dir_all("build")?;
-    build.run()?;
+    ContentProcessor::new(args, config, template_env).run()
+}
 
-    Ok(())
+pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
+    ContentProcessor::new(BuildArgs {}, config, minijinja::Environment::new()).dump()
 }
 
 struct ContentProcessor<'a> {
     args: BuildArgs,
     config: Config,
     template_env: minijinja::Environment<'a>,
-
-    has_errors: bool,
 }
 
 fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
@@ -120,16 +119,26 @@ fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
 
 impl<'a> ContentProcessor<'a> {
     fn new(args: BuildArgs, config: Config, template_env: minijinja::Environment<'a>) -> Self {
-        Self { args, config, template_env, has_errors: false }
+        Self { args, config, template_env }
     }
 
-    fn run(&mut self) -> anyhow::Result<()> {
-        dbg!(self.process_content_dir("content/".into())?);
+    fn run(&self) -> anyhow::Result<()> {
+        self.process_content_dir("content/".into(), WriteOutput::Yes)?;
+        Ok(())
+    }
+
+    fn dump(&self) -> anyhow::Result<()> {
+        let metadata = self.process_content_dir("content/".into(), WriteOutput::No)?;
+        println!("{metadata:#?}");
 
         Ok(())
     }
 
-    fn process_content_dir(&self, dir: &Utf8Path) -> anyhow::Result<DirectoryMetadata> {
+    fn process_content_dir(
+        &self,
+        dir: &Utf8Path,
+        write_output: WriteOutput,
+    ) -> anyhow::Result<DirectoryMetadata> {
         let mut subdirs = Vec::new();
         let mut files = Vec::new();
 
@@ -157,7 +166,7 @@ impl<'a> ContentProcessor<'a> {
                     .file_name()
                     .expect("read_dir iterator only yields entries with a file name part")
                     .to_owned();
-                let dir_meta = self.process_content_dir(path)?;
+                let dir_meta = self.process_content_dir(path, write_output)?;
 
                 Ok((file_name, dir_meta))
             })
@@ -166,7 +175,8 @@ impl<'a> ContentProcessor<'a> {
         let files: Vec<_> = files
             .par_iter()
             .map(|path| {
-                self.process_content_file(path).with_context(|| format!("processing `{path}`"))
+                self.process_content_file(path, write_output)
+                    .with_context(|| format!("processing `{path}`"))
             })
             .collect::<anyhow::Result<_>>()?;
 
@@ -178,10 +188,11 @@ impl<'a> ContentProcessor<'a> {
         Ok(DirectoryMetadata { subdirs, pages, assets })
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self, write_output))]
     pub(crate) fn process_content_file(
         &self,
         content_path: &Utf8Path,
+        write_output: WriteOutput,
     ) -> anyhow::Result<FileMetadata> {
         let page_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
@@ -192,36 +203,18 @@ impl<'a> ContentProcessor<'a> {
         let frontmatter = match parse_frontmatter(&mut input_file)? {
             Some(meta) => meta,
             None => {
-                debug!("copying file without frontmatter verbatim");
                 drop(input_file);
-                // todo: keep track of dirs created to avoid extra create_dir_all's?
-                fs::create_dir_all(output_path.parent().unwrap())?;
-                fs::copy(content_path, output_path)?;
+
+                if let WriteOutput::Yes = write_output {
+                    debug!("copying file without frontmatter verbatim");
+                    // todo: keep track of dirs created to avoid extra create_dir_all's?
+                    fs::create_dir_all(output_path.parent().unwrap())?;
+                    fs::copy(content_path, output_path)?;
+                }
+
                 return Ok(FileMetadata::Asset(AssetMetadata::new(page_path)));
             }
         };
-
-        let mut content = String::new();
-        input_file.read_to_string(&mut content)?;
-
-        #[cfg(feature = "markdown")]
-        if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
-            use pulldown_cmark::{html::push_html, Parser};
-
-            let parser = Parser::new(&content);
-            let mut html_buf = String::new();
-            push_html(&mut html_buf, parser);
-
-            content = html_buf;
-        }
-
-        #[cfg(not(feature = "markdown"))]
-        if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
-            anyhow::bail!(
-                "hinoki was compiled without support for markdown.\
-                 Please recompile with the 'markdown' feature enabled."
-            );
-        }
 
         let page_path = frontmatter.path.unwrap_or(page_path);
         let page_meta = PageMetadata {
@@ -237,12 +230,36 @@ impl<'a> ContentProcessor<'a> {
             date: frontmatter.date,
         };
 
-        let template = self
-            .template_env
-            .get_template(frontmatter.template.context("no template specified")?.as_str())?;
-        let ctx = RenderContext { content: &content, page: &page_meta };
-        let output_file = File::create(output_path)?;
-        template.render_to_write(ctx, output_file)?;
+        if let WriteOutput::Yes = write_output {
+            let mut content = String::new();
+            input_file.read_to_string(&mut content)?;
+
+            #[cfg(feature = "markdown")]
+            if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
+                use pulldown_cmark::{html::push_html, Parser};
+
+                let parser = Parser::new(&content);
+                let mut html_buf = String::new();
+                push_html(&mut html_buf, parser);
+
+                content = html_buf;
+            }
+
+            #[cfg(not(feature = "markdown"))]
+            if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
+                anyhow::bail!(
+                    "hinoki was compiled without support for markdown.\
+                     Please recompile with the 'markdown' feature enabled."
+                );
+            }
+
+            let template = self
+                .template_env
+                .get_template(frontmatter.template.context("no template specified")?.as_str())?;
+            let ctx = RenderContext { content: &content, page: &page_meta };
+            let output_file = File::create(output_path)?;
+            template.render_to_write(ctx, output_file)?;
+        }
 
         Ok(FileMetadata::Page(page_meta))
     }
@@ -251,6 +268,12 @@ impl<'a> ContentProcessor<'a> {
         // TODO: Honor self.config.path_patterns, maybe using matchit?
         Utf8Path::new("build").join(page_path)
     }
+}
+
+#[derive(Clone, Copy)]
+enum WriteOutput {
+    Yes,
+    No,
 }
 
 #[derive(Serialize)]

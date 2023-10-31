@@ -10,7 +10,7 @@ mod template;
 use self::{
     cli::{CliArgs, Command},
     config::Config,
-    content::build,
+    content::{build, dump},
 };
 
 fn main() -> anyhow::Result<()> {
@@ -27,6 +27,7 @@ fn main() -> anyhow::Result<()> {
 
     match args.command {
         Command::Build(args) => build(args, config)?,
+        Command::DumpMetadata => dump(config)?,
         Command::Serve => unimplemented!(),
     }
 
