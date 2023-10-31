@@ -2,16 +2,15 @@ use clap::Parser as _;
 use fs_err as fs;
 use tracing::warn;
 
-mod build;
 mod cli;
 mod config;
-mod frontmatter;
+mod content;
 mod template;
 
 use self::{
-    build::build,
     cli::{CliArgs, Command},
     config::Config,
+    content::build,
 };
 
 fn main() -> anyhow::Result<()> {

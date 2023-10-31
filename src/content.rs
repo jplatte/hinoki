@@ -1,5 +1,3 @@
-mod metadata;
-
 use std::{
     io::{BufReader, Read},
     sync::mpsc,
@@ -15,14 +13,17 @@ use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
 use walkdir::WalkDir;
 
-use crate::{
-    cli::BuildArgs,
-    config::Config,
-    frontmatter::{parse_frontmatter, ProcessContent},
-    template,
+use crate::{cli::BuildArgs, config::Config, template};
+
+use self::{
+    frontmatter::parse_frontmatter,
+    metadata::{AssetMetadata, DirectoryMetadata, FileMetadata, PageMetadata},
 };
 
-use self::metadata::{AssetMetadata, DirectoryMetadata, FileMetadata, PageMetadata};
+mod frontmatter;
+mod metadata;
+
+pub(crate) use self::frontmatter::ProcessContent;
 
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();

@@ -3,7 +3,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use indexmap::{indexmap, IndexMap};
 use serde::{de, Deserialize, Deserializer};
 
-use crate::frontmatter::ProcessContent;
+use crate::content::ProcessContent;
 
 #[derive(Default, Deserialize)]
 pub(crate) struct Config {
