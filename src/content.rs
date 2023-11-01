@@ -200,12 +200,15 @@ impl<'a> ContentProcessor<'a> {
         let mut input_file = BufReader::new(File::open(content_path)?);
 
         Ok(match parse_frontmatter(&mut input_file)? {
-            Some(frontmatter) => FileMetadata::Page(self.process_page(
-                page_path,
-                frontmatter,
-                write_output,
-                input_file,
-            )?),
+            Some(frontmatter) => {
+                let page_meta = self.page_metadata(page_path, frontmatter)?;
+
+                if let WriteOutput::Yes = write_output {
+                    self.render_page(&page_meta, input_file)?;
+                }
+
+                FileMetadata::Page(page_meta)
+            }
             None => {
                 drop(input_file);
 
@@ -214,17 +217,11 @@ impl<'a> ContentProcessor<'a> {
         })
     }
 
-    fn process_page(
+    fn page_metadata(
         &self,
         page_path: Utf8PathBuf,
         mut frontmatter: Frontmatter,
-        write_output: WriteOutput,
-        mut input_file: BufReader<File>,
-    ) -> Result<PageMetadata, anyhow::Error> {
-        // Apply defaults for any field that's not set.
-        //
-        // Iterate in reverse so fields from further down the config take
-        // precedence (more specific rules must come after less specific ones).
+    ) -> anyhow::Result<PageMetadata> {
         for defaults in self.config.defaults.for_path(&page_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
@@ -240,43 +237,49 @@ impl<'a> ContentProcessor<'a> {
             // TODO: template processing on the path, title
             path: frontmatter.path.unwrap_or(page_path),
             title: frontmatter.title,
+            // TODO: allow extracting from file name?
             date: frontmatter.date,
+            template: frontmatter.template.context("no template specified")?,
+            process_content: frontmatter.process_content,
         };
 
-        if let WriteOutput::Yes = write_output {
-            #[cfg(not(feature = "markdown"))]
-            if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
-                anyhow::bail!(
-                    "hinoki was compiled without support for markdown.\
-                     Please recompile with the 'markdown' feature enabled."
-                );
-            }
+        Ok(page_meta)
+    }
 
-            let output_path = self.output_path(&page_meta.path);
-
-            let mut content = String::new();
-            input_file.read_to_string(&mut content)?;
-
-            #[cfg(feature = "markdown")]
-            if let Some(ProcessContent::MarkdownToHtml) = frontmatter.process_content {
-                use pulldown_cmark::{html::push_html, Parser};
-
-                let parser = Parser::new(&content);
-                let mut html_buf = String::new();
-                push_html(&mut html_buf, parser);
-
-                content = html_buf;
-            }
-
-            let template = self
-                .template_env
-                .get_template(frontmatter.template.context("no template specified")?.as_str())?;
-            let ctx = RenderContext { content: &content, page: &page_meta };
-            let output_file = File::create(output_path)?;
-            template.render_to_write(ctx, output_file)?;
+    fn render_page(
+        &self,
+        page_meta: &PageMetadata,
+        mut input_file: BufReader<File>,
+    ) -> Result<(), anyhow::Error> {
+        #[cfg(not(feature = "markdown"))]
+        if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
+            anyhow::bail!(
+                "hinoki was compiled without support for markdown.\
+                 Please recompile with the 'markdown' feature enabled."
+            );
         }
 
-        Ok(page_meta)
+        let template = self.template_env.get_template(page_meta.template.as_str())?;
+
+        let mut content = String::new();
+        input_file.read_to_string(&mut content)?;
+
+        #[cfg(feature = "markdown")]
+        if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
+            use pulldown_cmark::{html::push_html, Parser};
+
+            let parser = Parser::new(&content);
+            let mut html_buf = String::new();
+            push_html(&mut html_buf, parser);
+
+            content = html_buf;
+        }
+
+        let ctx = RenderContext { content: &content, page: page_meta };
+        let output_file = File::create(self.output_path(&page_meta.path))?;
+        template.render_to_write(ctx, output_file)?;
+
+        Ok(())
     }
 
     fn process_asset(

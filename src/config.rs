@@ -7,6 +7,7 @@ use serde::{de, Deserialize, Deserializer};
 use crate::content::ProcessContent;
 
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Config {
     #[serde(default = "default_output_dir")]
     pub output_dir: Utf8PathBuf,
@@ -65,6 +66,7 @@ impl<'de> Deserialize<'de> for Defaults {
 }
 
 #[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct DefaultsForPath {
     pub path: Option<Utf8PathBuf>,
     pub template: Option<Utf8PathBuf>,
