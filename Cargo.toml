@@ -28,7 +28,7 @@ fs-err = "2.9.0"
 globset = { version = "0.4.13", default-features = false }
 indexmap = { version = "2.0.2", features = ["serde"] }
 itertools = "0.11.0"
-minijinja = "1.0.7"
+minijinja = { version = "1.0.7", features = ["custom_syntax", "loader"] }
 pulldown-cmark = { version = "0.9.3", optional = true }
 rayon = "1.8.0"
 serde = { version = "1.0.188", features = ["derive"] }

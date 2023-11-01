@@ -1,6 +1,6 @@
 use std::{
     io::{BufReader, Read},
-    sync::mpsc,
+    sync::{mpsc, OnceLock},
 };
 
 use anyhow::{format_err, Context as _};
@@ -226,7 +226,7 @@ impl<'a> ContentProcessor<'a> {
             frontmatter.apply_defaults(defaults);
         }
 
-        let page_meta = PageMetadata {
+        Ok(PageMetadata {
             draft: frontmatter.draft.unwrap_or(false),
             slug: frontmatter.slug.unwrap_or_else(|| {
                 trace!("Generating slug for `{page_path}`");
@@ -234,16 +234,47 @@ impl<'a> ContentProcessor<'a> {
                 trace!("Slug for `{page_path}` is `{slug}`");
                 slug
             }),
-            // TODO: template processing on the path, title
-            path: frontmatter.path.unwrap_or(page_path),
-            title: frontmatter.title,
+            path: match frontmatter.path {
+                // If path comes from frontmatter or defaults, apply templating
+                Some(path) => self.render_frontmatter_template(path)?.into(),
+                // Otherwise, use the path relative to content
+                None => page_path,
+            },
+            title: frontmatter
+                .title
+                .map(|title| self.render_frontmatter_template(title))
+                .transpose()?,
             // TODO: allow extracting from file name?
             date: frontmatter.date,
             template: frontmatter.template.context("no template specified")?,
             process_content: frontmatter.process_content,
-        };
+        })
+    }
 
-        Ok(page_meta)
+    fn render_frontmatter_template(&self, template: String) -> anyhow::Result<String> {
+        static META_ENVIRONMENT: OnceLock<minijinja::Environment<'static>> = OnceLock::new();
+        let environment = META_ENVIRONMENT.get_or_init(|| {
+            let mut environment = minijinja::Environment::empty();
+            environment
+                .set_syntax(minijinja::Syntax {
+                    block_start: "{%".into(),
+                    block_end: "%}".into(),
+                    variable_start: "{".into(),
+                    variable_end: "}".into(),
+                    comment_start: "{#".into(),
+                    comment_end: "#}".into(),
+                })
+                .expect("custom minijinja syntax is valid");
+            environment.set_loader(|tpl| Ok(Some(tpl.to_owned())));
+            environment
+        });
+
+        #[derive(Serialize)]
+        struct Context {
+            // TODO!
+        }
+
+        Ok(environment.get_template(&template)?.render(Context {})?)
     }
 
     fn render_page(

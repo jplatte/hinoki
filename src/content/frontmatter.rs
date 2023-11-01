@@ -25,7 +25,7 @@ pub(crate) struct Frontmatter {
     /// Custom rendered path for this page.
     ///
     /// If it ends in `/`, `index.html` is implicitly appended.
-    pub path: Option<Utf8PathBuf>,
+    pub path: Option<String>,
 
     /// Alias paths for this page.
     ///

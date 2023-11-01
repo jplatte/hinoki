@@ -68,7 +68,7 @@ impl<'de> Deserialize<'de> for Defaults {
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DefaultsForPath {
-    pub path: Option<Utf8PathBuf>,
+    pub path: Option<String>,
     pub template: Option<Utf8PathBuf>,
     pub process_content: Option<ProcessContent>,
     pub title: Option<String>,
