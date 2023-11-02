@@ -1,6 +1,6 @@
 use std::{
     io::{BufReader, Read},
-    sync::{mpsc, OnceLock},
+    sync::mpsc,
 };
 
 use anyhow::{format_err, Context as _};
@@ -41,6 +41,7 @@ struct ContentProcessor<'a> {
     args: BuildArgs,
     config: Config,
     template_env: minijinja::Environment<'a>,
+    metadata_env: minijinja::Environment<'static>,
 }
 
 fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
@@ -119,7 +120,20 @@ fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
 
 impl<'a> ContentProcessor<'a> {
     fn new(args: BuildArgs, config: Config, template_env: minijinja::Environment<'a>) -> Self {
-        Self { args, config, template_env }
+        let mut metadata_env = minijinja::Environment::empty();
+        metadata_env
+            .set_syntax(minijinja::Syntax {
+                block_start: "{%".into(),
+                block_end: "%}".into(),
+                variable_start: "{".into(),
+                variable_end: "}".into(),
+                comment_start: "{#".into(),
+                comment_end: "#}".into(),
+            })
+            .expect("custom minijinja syntax is valid");
+        metadata_env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
+
+        Self { args, config, template_env, metadata_env }
     }
 
     fn run(&self) -> anyhow::Result<()> {
@@ -252,29 +266,12 @@ impl<'a> ContentProcessor<'a> {
     }
 
     fn render_frontmatter_template(&self, template: String) -> anyhow::Result<String> {
-        static META_ENVIRONMENT: OnceLock<minijinja::Environment<'static>> = OnceLock::new();
-        let environment = META_ENVIRONMENT.get_or_init(|| {
-            let mut environment = minijinja::Environment::empty();
-            environment
-                .set_syntax(minijinja::Syntax {
-                    block_start: "{%".into(),
-                    block_end: "%}".into(),
-                    variable_start: "{".into(),
-                    variable_end: "}".into(),
-                    comment_start: "{#".into(),
-                    comment_end: "#}".into(),
-                })
-                .expect("custom minijinja syntax is valid");
-            environment.set_loader(|tpl| Ok(Some(tpl.to_owned())));
-            environment
-        });
-
         #[derive(Serialize)]
         struct Context {
             // TODO!
         }
 
-        Ok(environment.get_template(&template)?.render(Context {})?)
+        Ok(self.metadata_env.get_template(&template)?.render(Context {})?)
     }
 
     fn render_page(
