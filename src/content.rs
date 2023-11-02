@@ -29,7 +29,7 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
 
-    fs::create_dir_all("build")?;
+    fs::create_dir_all(&config.output_dir)?;
     ContentProcessor::new(args, config, template_env).run()
 }
 
