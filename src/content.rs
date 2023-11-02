@@ -236,42 +236,47 @@ impl<'a> ContentProcessor<'a> {
         page_path: Utf8PathBuf,
         mut frontmatter: Frontmatter,
     ) -> anyhow::Result<PageMetadata> {
+        #[derive(Serialize)]
+        struct FrontmatterRenderContext<'a> {
+            slug: &'a str,
+            // TODO: More fields
+        }
+
         for defaults in self.config.defaults.for_path(&page_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
 
+        let slug = frontmatter.slug.unwrap_or_else(|| {
+            trace!("Generating slug for `{page_path}`");
+            let slug = page_path.file_stem().expect("path must have a file name").to_owned();
+            trace!("Slug for `{page_path}` is `{slug}`");
+            slug
+        });
+
+        let frontmatter_ctx = FrontmatterRenderContext { slug: &slug };
+
+        let path = match frontmatter.path {
+            // If path comes from frontmatter or defaults, apply templating
+            Some(path) => self.metadata_env.get_template(&path)?.render(&frontmatter_ctx)?.into(),
+            // Otherwise, use the path relative to content
+            None => page_path,
+        };
+
+        let title = frontmatter
+            .title
+            .map(|title| self.metadata_env.get_template(&title)?.render(&frontmatter_ctx))
+            .transpose()?;
+
         Ok(PageMetadata {
             draft: frontmatter.draft.unwrap_or(false),
-            slug: frontmatter.slug.unwrap_or_else(|| {
-                trace!("Generating slug for `{page_path}`");
-                let slug = page_path.file_stem().expect("path must have a file name").to_owned();
-                trace!("Slug for `{page_path}` is `{slug}`");
-                slug
-            }),
-            path: match frontmatter.path {
-                // If path comes from frontmatter or defaults, apply templating
-                Some(path) => self.render_frontmatter_template(path)?.into(),
-                // Otherwise, use the path relative to content
-                None => page_path,
-            },
-            title: frontmatter
-                .title
-                .map(|title| self.render_frontmatter_template(title))
-                .transpose()?,
+            slug,
+            path,
+            title,
             // TODO: allow extracting from file name?
             date: frontmatter.date,
             template: frontmatter.template.context("no template specified")?,
             process_content: frontmatter.process_content,
         })
-    }
-
-    fn render_frontmatter_template(&self, template: String) -> anyhow::Result<String> {
-        #[derive(Serialize)]
-        struct Context {
-            // TODO!
-        }
-
-        Ok(self.metadata_env.get_template(&template)?.render(Context {})?)
     }
 
     fn render_page(
