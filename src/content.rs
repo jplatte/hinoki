@@ -308,8 +308,11 @@ impl<'a> ContentProcessor<'a> {
             content = html_buf;
         }
 
+        let output_path = self.output_path(&page_meta.path);
+        fs::create_dir_all(output_path.parent().unwrap())?;
+        let output_file = File::create(output_path)?;
+
         let ctx = RenderContext { content: &content, page: page_meta };
-        let output_file = File::create(self.output_path(&page_meta.path))?;
         template.render_to_write(ctx, output_file)?;
 
         Ok(())
