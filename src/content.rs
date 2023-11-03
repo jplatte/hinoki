@@ -1,6 +1,7 @@
 use std::{
+    collections::BTreeMap,
     io::{BufReader, Read},
-    sync::mpsc,
+    sync::{mpsc, Arc},
 };
 
 use anyhow::{format_err, Context as _};
@@ -8,22 +9,30 @@ use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
 use itertools::{Either, Itertools};
+use minijinja::context;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
 use walkdir::WalkDir;
 
-use crate::{cli::BuildArgs, config::Config, template};
+use crate::{
+    cli::BuildArgs,
+    config::Config,
+    template::{self, functions},
+};
 
 use self::{
     frontmatter::{parse_frontmatter, Frontmatter},
-    metadata::{AssetMetadata, DirectoryMetadata, FileMetadata, PageMetadata},
+    metadata::FileMetadata,
 };
 
 mod frontmatter;
 mod metadata;
 
-pub(crate) use self::frontmatter::ProcessContent;
+pub(crate) use self::{
+    frontmatter::ProcessContent,
+    metadata::{AssetMetadata, DirectoryMetadata, PageMetadata},
+};
 
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
@@ -173,32 +182,41 @@ impl<'a> ContentProcessor<'a> {
 
         // First, process subdirectories (operate depth-first), such that they
         // are available for the minijinja context of the `pages`.
-        let subdirs = subdirs
-            .par_iter()
-            .map(|path| {
-                let file_name = path
-                    .file_name()
-                    .expect("read_dir iterator only yields entries with a file name part")
-                    .to_owned();
-                let dir_meta = self.process_content_dir(path, write_output)?;
+        let subdirs = Arc::new(
+            subdirs
+                .par_iter()
+                .map(|path| {
+                    let file_name = path
+                        .file_name()
+                        .expect("read_dir iterator only yields entries with a file name part")
+                        .to_owned();
+                    let dir_meta = self.process_content_dir(path, write_output)?;
 
-                Ok((file_name, dir_meta))
-            })
-            .collect::<anyhow::Result<_>>()?;
+                    Ok((file_name, dir_meta))
+                })
+                .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
+        );
 
-        let files: Vec<_> = files
-            .par_iter()
-            .map(|path| {
-                self.process_content_file(path, write_output)
-                    .with_context(|| format!("processing `{path}`"))
-            })
-            .collect::<anyhow::Result<_>>()?;
+        let files: Vec<_> = {
+            let functions = context! {
+                get_pages => minijinja::Value::from(functions::GetPages::new(subdirs.clone())),
+            };
+
+            files
+                .par_iter()
+                .map(|path| {
+                    self.process_content_file(path, functions.clone(), write_output)
+                        .with_context(|| format!("processing `{path}`"))
+                })
+                .collect::<anyhow::Result<_>>()?
+        };
 
         let (pages, assets) = files.into_iter().partition_map(|file_meta| match file_meta {
             FileMetadata::Page(meta) => Either::Left(meta),
             FileMetadata::Asset(meta) => Either::Right(meta),
         });
 
+        let subdirs = Arc::into_inner(subdirs).expect("no further references exist at this point");
         Ok(DirectoryMetadata { subdirs, pages, assets })
     }
 
@@ -206,6 +224,7 @@ impl<'a> ContentProcessor<'a> {
     fn process_content_file(
         &self,
         content_path: &Utf8Path,
+        functions: minijinja::Value,
         write_output: WriteOutput,
     ) -> anyhow::Result<FileMetadata> {
         let page_path =
@@ -218,7 +237,7 @@ impl<'a> ContentProcessor<'a> {
                 let page_meta = self.page_metadata(page_path, frontmatter)?;
 
                 if let WriteOutput::Yes = write_output {
-                    self.render_page(&page_meta, input_file)?;
+                    self.render_page(&page_meta, functions, input_file)?;
                 }
 
                 FileMetadata::Page(page_meta)
@@ -282,6 +301,7 @@ impl<'a> ContentProcessor<'a> {
     fn render_page(
         &self,
         page_meta: &PageMetadata,
+        functions: minijinja::Value,
         mut input_file: BufReader<File>,
     ) -> Result<(), anyhow::Error> {
         #[cfg(not(feature = "markdown"))]
@@ -312,7 +332,11 @@ impl<'a> ContentProcessor<'a> {
         fs::create_dir_all(output_path.parent().unwrap())?;
         let output_file = File::create(output_path)?;
 
-        let ctx = RenderContext { content: &content, page: page_meta };
+        let ctx = context! {
+            content,
+            page => page_meta,
+            ..functions
+        };
         template.render_to_write(ctx, output_file)?;
 
         Ok(())
@@ -345,10 +369,4 @@ impl<'a> ContentProcessor<'a> {
 enum WriteOutput {
     Yes,
     No,
-}
-
-#[derive(Serialize)]
-struct RenderContext<'a> {
-    content: &'a str,
-    page: &'a PageMetadata,
 }

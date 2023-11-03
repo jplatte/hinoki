@@ -1,11 +1,54 @@
 //! Extra functions available to templates, in addition to MiniJinja's builtin
 //! functions.
 
-use std::fmt::Display;
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
-use minijinja::{ErrorKind, Value};
+use minijinja::{
+    value::{from_args, Object},
+    ErrorKind, Value,
+};
+
+use crate::content::DirectoryMetadata;
+
+#[repr(transparent)]
+#[derive(Debug)]
+pub(crate) struct GetPages {
+    current_dir_subdirs: BTreeMap<String, DirectoryMetadata>,
+}
+
+impl GetPages {
+    pub(crate) fn new(current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>) -> Arc<Self> {
+        // SAFETY: GetPages is a repr(transparent) struct over the map
+        unsafe { Arc::from_raw(Arc::into_raw(current_dir_subdirs) as _) }
+    }
+}
+
+impl fmt::Display for GetPages {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "get_pages")
+    }
+}
+
+impl Object for GetPages {
+    fn call(&self, _state: &minijinja::State, args: &[Value]) -> Result<Value, minijinja::Error> {
+        // TODO: split at slash and do nested lookup?
+
+        let (subdir_name,): (&str,) = from_args(args)?;
+        match self.current_dir_subdirs.get(subdir_name) {
+            Some(subdir_meta) => Ok(Value::from_serializable(&subdir_meta.pages)),
+            None => Err(minijinja::Error::new(
+                minijinja::ErrorKind::InvalidOperation,
+                format!("no subdirectory `{subdir_name}`"),
+            )),
+        }
+    }
+}
 
 pub(super) fn load_data(path: String) -> Result<Value, minijinja::Error> {
     // FIXME: MiniJinja's ErrorKind type does not have an Other variant,

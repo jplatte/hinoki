@@ -1,6 +1,6 @@
 use minijinja::UndefinedBehavior;
 
-mod functions;
+pub(crate) mod functions;
 
 pub(crate) fn environment<'a>() -> minijinja::Environment<'a> {
     let mut env = minijinja::Environment::new();

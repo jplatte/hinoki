@@ -7,20 +7,20 @@ use serde::Serialize;
 use super::ProcessContent;
 
 #[derive(Debug)]
-pub(super) struct DirectoryMetadata {
+pub(crate) struct DirectoryMetadata {
     pub subdirs: BTreeMap<String, DirectoryMetadata>,
     pub pages: Vec<PageMetadata>,
     pub assets: Vec<AssetMetadata>,
 }
 
 #[derive(Debug)]
-pub(super) enum FileMetadata {
+pub(crate) enum FileMetadata {
     Page(PageMetadata),
     Asset(AssetMetadata),
 }
 
 #[derive(Debug, Serialize)]
-pub(super) struct PageMetadata {
+pub(crate) struct PageMetadata {
     pub draft: bool,
     pub slug: String,
     pub path: Utf8PathBuf,
@@ -35,8 +35,8 @@ pub(super) struct PageMetadata {
     pub process_content: Option<ProcessContent>,
 }
 
-#[derive(Debug)]
-pub(super) struct AssetMetadata {
+#[derive(Debug, Serialize)]
+pub(crate) struct AssetMetadata {
     pub path: Utf8PathBuf,
 }
 
