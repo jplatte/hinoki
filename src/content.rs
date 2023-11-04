@@ -319,9 +319,9 @@ impl<'a> ContentProcessor<'a> {
 
         #[cfg(feature = "markdown")]
         if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
-            use pulldown_cmark::{html::push_html, Parser};
+            use pulldown_cmark::{html::push_html, Options, Parser};
 
-            let parser = Parser::new(&content);
+            let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
             let mut html_buf = String::new();
             push_html(&mut html_buf, parser);
 
