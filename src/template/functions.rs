@@ -5,7 +5,6 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display},
     sync::{Arc, OnceLock},
-    time::Duration,
 };
 
 use camino::Utf8PathBuf;

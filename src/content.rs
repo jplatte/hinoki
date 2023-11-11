@@ -10,10 +10,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
 use itertools::{Either, Itertools};
 use minijinja::context;
-use rayon::{
-    iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _},
-    prelude::IndexedParallelIterator,
-};
+use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
 use walkdir::WalkDir;
