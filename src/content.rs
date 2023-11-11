@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::{BufReader, Read},
-    sync::{mpsc, Arc},
+    sync::{mpsc, Arc, OnceLock},
 };
 
 use anyhow::{format_err, Context as _};
@@ -10,7 +10,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
 use itertools::{Either, Itertools};
 use minijinja::context;
-use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
+use rayon::{
+    iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _},
+    prelude::IndexedParallelIterator,
+};
 use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
 use walkdir::WalkDir;
@@ -228,29 +231,39 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
                 .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
         );
 
+        let pages = Arc::new(OnceLock::new());
         let files: Vec<_> = {
-            let functions = context! {
-                get_pages => minijinja::Value::from(functions::GetPages::new(subdirs.clone())),
-            };
-
             files
-                .par_iter()
-                .map(|path| {
+                // Should use par_iter here, but that causes deadlocks:
+                // https://github.com/rayon-rs/rayon/issues/969
+                .iter()
+                .enumerate()
+                .map(|(idx, path)| {
+                    let functions = context! {
+                        get_page => minijinja::Value::from_object(
+                            functions::GetPage::new(pages.clone(), subdirs.clone(), idx),
+                        ),
+                        get_pages => minijinja::Value::from(
+                            functions::GetPages::new(subdirs.clone()),
+                        ),
+                    };
+
                     self.process_content_file(path, functions.clone(), write_output)
                         .with_context(|| format!("processing `{path}`"))
                 })
                 .collect::<anyhow::Result<_>>()?
         };
 
-        let (pages, assets) = files.into_iter().partition_map(|file_meta| match file_meta {
+        let (pages_vec, assets) = files.into_iter().partition_map(|file_meta| match file_meta {
             FileMetadata::Page(meta) => Either::Left(meta),
             FileMetadata::Asset(meta) => Either::Right(meta),
         });
 
+        pages.set(pages_vec).unwrap(); // only set from here
         Ok(DirectoryMetadata { subdirs, pages, assets })
     }
 
-    #[instrument(skip(self, write_output))]
+    #[instrument(skip_all, fields(?content_path))]
     fn process_content_file(
         &self,
         content_path: &Utf8Path,
@@ -356,7 +369,10 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
         let page_val = minijinja::Value::from_serializable(page_meta);
         let error_tx = self.error_tx.clone();
 
+        let span = tracing::Span::current();
         self.render_scope.spawn(move |_| {
+            let _guard = span.enter();
+
             #[cfg(feature = "markdown")]
             if let Some(ProcessContent::MarkdownToHtml) = process_content {
                 use pulldown_cmark::{html::push_html, Options, Parser};
