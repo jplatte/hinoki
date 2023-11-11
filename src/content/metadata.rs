@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use camino::Utf8PathBuf;
 use chrono::{DateTime, Utc};
@@ -8,7 +8,7 @@ use super::ProcessContent;
 
 #[derive(Debug)]
 pub(crate) struct DirectoryMetadata {
-    pub subdirs: BTreeMap<String, DirectoryMetadata>,
+    pub subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
     pub pages: Vec<PageMetadata>,
     pub assets: Vec<AssetMetadata>,
 }

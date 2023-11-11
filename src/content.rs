@@ -34,23 +34,48 @@ pub(crate) use self::{
     metadata::{AssetMetadata, DirectoryMetadata, PageMetadata},
 };
 
+// FIXME: Collect errors instead of returning only the first
+
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
 
     fs::create_dir_all(&config.output_dir)?;
-    ContentProcessor::new(args, config, template_env).run()
+
+    let (error_tx, error_rx) = mpsc::channel();
+    rayon::scope(|scope| {
+        ContentProcessor::new(args, config, &template_env, scope, error_tx).run()
+    })?;
+
+    if let Ok(e) = error_rx.recv() {
+        return Err(e.into());
+    }
+
+    Ok(())
 }
 
 pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
-    ContentProcessor::new(BuildArgs {}, config, minijinja::Environment::new()).dump()
+    let (error_tx, error_rx) = mpsc::channel();
+    let template_env = minijinja::Environment::new();
+    rayon::scope(|scope| {
+        ContentProcessor::new(BuildArgs {}, config, &template_env, scope, error_tx).dump()
+    })?;
+
+    assert!(error_rx.recv().is_err());
+
+    Ok(())
 }
 
-struct ContentProcessor<'a> {
+struct ContentProcessor<'t, 's, 'sc> {
+    // FIXME: args, template_env, render_scope only actually needed for
+    // building, not for dumping. Make a trait for those two instead of
+    // branching internally?
     args: BuildArgs,
     config: Config,
-    template_env: minijinja::Environment<'a>,
+    template_env: &'t minijinja::Environment<'t>,
     metadata_env: minijinja::Environment<'static>,
+    render_scope: &'s rayon::Scope<'sc>,
+    error_tx: mpsc::Sender<minijinja::Error>,
 }
 
 fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
@@ -127,8 +152,14 @@ fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
     Ok(template_env)
 }
 
-impl<'a> ContentProcessor<'a> {
-    fn new(args: BuildArgs, config: Config, template_env: minijinja::Environment<'a>) -> Self {
+impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
+    fn new(
+        args: BuildArgs,
+        config: Config,
+        template_env: &'t minijinja::Environment<'t>,
+        render_scope: &'s rayon::Scope<'sc>,
+        error_tx: mpsc::Sender<minijinja::Error>,
+    ) -> Self {
         let mut metadata_env = minijinja::Environment::empty();
         metadata_env
             .set_syntax(minijinja::Syntax {
@@ -142,7 +173,7 @@ impl<'a> ContentProcessor<'a> {
             .expect("custom minijinja syntax is valid");
         metadata_env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
 
-        Self { args, config, template_env, metadata_env }
+        Self { args, config, template_env, metadata_env, render_scope, error_tx }
     }
 
     fn run(&self) -> anyhow::Result<()> {
@@ -216,7 +247,6 @@ impl<'a> ContentProcessor<'a> {
             FileMetadata::Asset(meta) => Either::Right(meta),
         });
 
-        let subdirs = Arc::into_inner(subdirs).expect("no further references exist at this point");
         Ok(DirectoryMetadata { subdirs, pages, assets })
     }
 
@@ -314,30 +344,40 @@ impl<'a> ContentProcessor<'a> {
 
         let template = self.template_env.get_template(page_meta.template.as_str())?;
 
+        let output_path = self.output_path(&page_meta.path);
+        fs::create_dir_all(output_path.parent().unwrap())?;
+
         let mut content = String::new();
         input_file.read_to_string(&mut content)?;
 
-        #[cfg(feature = "markdown")]
-        if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
-            use pulldown_cmark::{html::push_html, Options, Parser};
-
-            let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
-            let mut html_buf = String::new();
-            push_html(&mut html_buf, parser);
-
-            content = html_buf;
-        }
-
-        let output_path = self.output_path(&page_meta.path);
-        fs::create_dir_all(output_path.parent().unwrap())?;
         let output_file = File::create(output_path)?;
 
-        let ctx = context! {
-            content,
-            page => page_meta,
-            ..functions
-        };
-        template.render_to_write(ctx, output_file)?;
+        let process_content = page_meta.process_content;
+        let page_val = minijinja::Value::from_serializable(page_meta);
+        let error_tx = self.error_tx.clone();
+
+        self.render_scope.spawn(move |_| {
+            #[cfg(feature = "markdown")]
+            if let Some(ProcessContent::MarkdownToHtml) = process_content {
+                use pulldown_cmark::{html::push_html, Options, Parser};
+
+                let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
+                let mut html_buf = String::new();
+                push_html(&mut html_buf, parser);
+
+                content = html_buf;
+            }
+
+            let ctx = context! {
+                content,
+                page => page_val,
+                ..functions
+            };
+
+            if let Err(e) = template.render_to_write(ctx, output_file) {
+                error_tx.send(e).unwrap();
+            }
+        });
 
         Ok(())
     }
