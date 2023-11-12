@@ -10,24 +10,29 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
 use itertools::{Either, Itertools};
 use minijinja::context;
+#[cfg(feature = "syntax-highlighting")]
+use once_cell::sync::OnceCell;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
 use walkdir::WalkDir;
 
+#[cfg(feature = "syntax-highlighting")]
+use self::syntax_highlighting::SyntaxHighlighter;
+use self::{
+    frontmatter::{parse_frontmatter, Frontmatter},
+    metadata::FileMetadata,
+};
 use crate::{
     cli::BuildArgs,
     config::Config,
     template::{self, functions},
 };
 
-use self::{
-    frontmatter::{parse_frontmatter, Frontmatter},
-    metadata::FileMetadata,
-};
-
 mod frontmatter;
 mod metadata;
+#[cfg(feature = "syntax-highlighting")]
+mod syntax_highlighting;
 
 pub(crate) use self::{
     frontmatter::ProcessContent,
@@ -39,16 +44,26 @@ pub(crate) use self::{
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
+    let syntax_highlighter = OnceCell::new();
 
     fs::create_dir_all(&config.output_dir)?;
 
     let (error_tx, error_rx) = mpsc::channel();
     rayon::scope(|scope| {
-        ContentProcessor::new(args, config, &template_env, scope, error_tx).run()
+        ContentProcessor::new(
+            args,
+            config,
+            &template_env,
+            scope,
+            error_tx,
+            #[cfg(feature = "syntax-highlighting")]
+            &syntax_highlighter,
+        )
+        .run()
     })?;
 
     if let Ok(e) = error_rx.recv() {
-        return Err(e.into());
+        return Err(e);
     }
 
     Ok(())
@@ -57,6 +72,7 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
 pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
     let (error_tx, error_rx) = mpsc::channel();
     let template_env = minijinja::Environment::new();
+    let syntax_highlighter = OnceCell::new();
     rayon::scope(|scope| {
         ContentProcessor::new(
             BuildArgs { include_drafts: true },
@@ -64,6 +80,8 @@ pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
             &template_env,
             scope,
             error_tx,
+            #[cfg(feature = "syntax-highlighting")]
+            &syntax_highlighter,
         )
         .dump()
     })?;
@@ -73,16 +91,18 @@ pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-struct ContentProcessor<'t, 's, 'sc> {
+struct ContentProcessor<'a, 's, 'sc> {
     // FIXME: args, template_env, render_scope only actually needed for
     // building, not for dumping. Make a trait for those two instead of
     // branching internally?
     args: BuildArgs,
     config: Config,
-    template_env: &'t minijinja::Environment<'t>,
+    template_env: &'a minijinja::Environment<'a>,
     metadata_env: minijinja::Environment<'static>,
     render_scope: &'s rayon::Scope<'sc>,
-    error_tx: mpsc::Sender<minijinja::Error>,
+    error_tx: mpsc::Sender<anyhow::Error>,
+    #[cfg(feature = "syntax-highlighting")]
+    syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
 }
 
 fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
@@ -159,13 +179,14 @@ fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
     Ok(template_env)
 }
 
-impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
+impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
     fn new(
         args: BuildArgs,
         config: Config,
-        template_env: &'t minijinja::Environment<'t>,
+        template_env: &'a minijinja::Environment<'a>,
         render_scope: &'s rayon::Scope<'sc>,
-        error_tx: mpsc::Sender<minijinja::Error>,
+        error_tx: mpsc::Sender<anyhow::Error>,
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
     ) -> Self {
         let mut metadata_env = minijinja::Environment::empty();
         metadata_env
@@ -180,7 +201,16 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
             .expect("custom minijinja syntax is valid");
         metadata_env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
 
-        Self { args, config, template_env, metadata_env, render_scope, error_tx }
+        Self {
+            args,
+            config,
+            template_env,
+            metadata_env,
+            render_scope,
+            error_tx,
+            #[cfg(feature = "syntax-highlighting")]
+            syntax_highlighter,
+        }
     }
 
     fn run(&self) -> anyhow::Result<()> {
@@ -287,7 +317,7 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
                 }
 
                 if let WriteOutput::Yes = write_output {
-                    self.render_page(&page_meta, functions, input_file)?;
+                    self.render_page(page_meta.clone(), functions, input_file)?;
                 }
 
                 FileMetadata::Page(page_meta)
@@ -336,6 +366,14 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
             .map(|title| self.metadata_env.get_template(&title)?.render(&frontmatter_ctx))
             .transpose()?;
 
+        #[cfg(not(feature = "syntax-highlighting"))]
+        if frontmatter.syntax_highlight_theme.is_some() {
+            warn!(
+                "syntax highlighting was requested, but hinoki
+                 was compiled without support for syntax highlighting"
+            );
+        }
+
         Ok(PageMetadata {
             draft: frontmatter.draft.unwrap_or(false),
             slug,
@@ -345,15 +383,16 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
             date: frontmatter.date,
             template: frontmatter.template.context("no template specified")?,
             process_content: frontmatter.process_content,
+            syntax_highlight_theme: frontmatter.syntax_highlight_theme,
         })
     }
 
     fn render_page(
         &self,
-        page_meta: &PageMetadata,
+        page_meta: PageMetadata,
         functions: minijinja::Value,
-        mut input_file: BufReader<File>,
-    ) -> Result<(), anyhow::Error> {
+        input_file: BufReader<File>,
+    ) -> anyhow::Result<()> {
         #[cfg(not(feature = "markdown"))]
         if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
             anyhow::bail!(
@@ -362,42 +401,26 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
             );
         }
 
-        let template = self.template_env.get_template(page_meta.template.as_str())?;
-
+        let template_env = self.template_env;
         let output_path = self.output_path(&page_meta.path);
-        fs::create_dir_all(output_path.parent().unwrap())?;
-
-        let mut content = String::new();
-        input_file.read_to_string(&mut content)?;
-
-        let output_file = File::create(output_path)?;
-
-        let process_content = page_meta.process_content;
-        let page_val = minijinja::Value::from_serializable(page_meta);
-        let error_tx = self.error_tx.clone();
+        #[cfg(feature = "syntax-highlighting")]
+        let syntax_highlighter = self.syntax_highlighter;
 
         let span = tracing::Span::current();
+        let error_tx = self.error_tx.clone();
+
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            #[cfg(feature = "markdown")]
-            if let Some(ProcessContent::MarkdownToHtml) = process_content {
-                use pulldown_cmark::{html::push_html, Options, Parser};
-
-                let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
-                let mut html_buf = String::new();
-                push_html(&mut html_buf, parser);
-
-                content = html_buf;
-            }
-
-            let ctx = context! {
-                content,
-                page => page_val,
-                ..functions
-            };
-
-            if let Err(e) = template.render_to_write(ctx, output_file) {
+            if let Err(e) = render_page(
+                template_env,
+                page_meta,
+                input_file,
+                output_path,
+                #[cfg(feature = "syntax-highlighting")]
+                syntax_highlighter,
+                functions,
+            ) {
                 error_tx.send(e).unwrap();
             }
         });
@@ -410,7 +433,7 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
         write_output: WriteOutput,
         page_path: Utf8PathBuf,
         content_path: &Utf8Path,
-    ) -> Result<AssetMetadata, anyhow::Error> {
+    ) -> anyhow::Result<AssetMetadata> {
         if let WriteOutput::Yes = write_output {
             let output_path = self.output_path(&page_path);
 
@@ -426,6 +449,55 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
     fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
         self.config.output_dir.join(page_path)
     }
+}
+
+fn render_page(
+    template_env: &minijinja::Environment<'_>,
+    page_meta: PageMetadata,
+    mut input_file: BufReader<File>,
+    output_path: Utf8PathBuf,
+    #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &OnceCell<SyntaxHighlighter>,
+    functions: minijinja::Value,
+) -> anyhow::Result<()> {
+    let template = template_env.get_template(page_meta.template.as_str())?;
+
+    let mut content = String::new();
+    input_file.read_to_string(&mut content)?;
+
+    fs::create_dir_all(output_path.parent().unwrap())?;
+    let output_file = File::create(output_path)?;
+
+    #[cfg(feature = "markdown")]
+    if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
+        use pulldown_cmark::{html::push_html, Options, Parser};
+
+        let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
+        let mut html_buf = String::new();
+
+        #[cfg(feature = "syntax-highlighting")]
+        let syntax_highlighter = syntax_highlighter.get_or_try_init(SyntaxHighlighter::new)?;
+
+        #[cfg(feature = "syntax-highlighting")]
+        if let Some(theme) =
+            page_meta.syntax_highlight_theme.as_deref().or_else(|| syntax_highlighter.theme())
+        {
+            let with_highlighting = syntax_highlighter.highlight(parser, theme)?;
+            push_html(&mut html_buf, with_highlighting);
+        } else {
+            push_html(&mut html_buf, parser);
+        }
+
+        content = html_buf;
+    }
+
+    let ctx = context! {
+        content,
+        page => &page_meta,
+        ..functions
+    };
+
+    template.render_to_write(ctx, output_file)?;
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

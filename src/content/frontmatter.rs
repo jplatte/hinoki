@@ -22,6 +22,9 @@ pub(crate) struct Frontmatter {
     /// What kind of processing should be done on the content, if any.
     pub process_content: Option<ProcessContent>,
 
+    /// Syntax highlighting theme for markdown code blocks.
+    pub syntax_highlight_theme: Option<String>,
+
     /// Custom rendered path for this page.
     ///
     /// If it ends in `/`, `index.html` is implicitly appended.

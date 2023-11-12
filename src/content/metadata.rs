@@ -22,7 +22,7 @@ pub(crate) enum FileMetadata {
     Asset(AssetMetadata),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub(crate) struct PageMetadata {
     pub draft: bool,
     pub slug: String,
@@ -36,6 +36,8 @@ pub(crate) struct PageMetadata {
     pub template: Utf8PathBuf,
     #[serde(skip)]
     pub process_content: Option<ProcessContent>,
+    #[serde(skip)]
+    pub syntax_highlight_theme: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

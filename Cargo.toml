@@ -5,10 +5,12 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [features]
-default = ["markdown", "datetime"]
+default = ["markdown", "syntax-highlighting", "datetime"]
 
 # Markdown to HTML support
 markdown = ["dep:pulldown-cmark"]
+# Syntax highlighting for markdown code blocks
+syntax-highlighting = ["markdown", "dep:once_cell", "dep:syntect"]
 
 # Filters for formatting timestamps as date / time / datetime
 datetime = ["dep:minijinja-contrib"]
@@ -35,6 +37,7 @@ indexmap = { version = "2.0.2", features = ["serde"] }
 itertools = "0.11.0"
 minijinja = { version = "1.0.7", features = ["custom_syntax", "loader"] }
 minijinja-contrib = { version = "1.0.10", features = ["datetime"], optional = true }
+once_cell = { version = "1.18.0", optional = true }
 pulldown-cmark = { version = "0.9.3", optional = true }
 rayon = "1.8.0"
 serde = { version = "1.0.188", features = ["derive"] }
@@ -45,3 +48,18 @@ tower-http = { version = "0.4.4", optional = true }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 walkdir = "2.4.0"
+
+[dependencies.syntect]
+version = "5.1.0"
+default-features = false
+features = ["default-syntaxes", "html", "plist-load", "regex-fancy"]
+optional = true
+
+# Optimize performance-sensitive dependencies when doing debug builds
+[profile.dev.package]
+aho-corasick = { opt-level = 2 }
+fancy-regex = { opt-level = 2 }
+memchr = { opt-level = 2 }
+regex = { opt-level = 2 }
+regex-automata = { opt-level = 2 }
+regex-syntax = { opt-level = 2 }
