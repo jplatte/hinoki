@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Display},
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
 use camino::Utf8PathBuf;
@@ -69,7 +70,7 @@ impl GetPage {
 
             if rayon::yield_now().unwrap() == rayon::Yield::Idle {
                 warn!("No available work");
-                //std::thread::sleep(Duration::from_millis(200));
+                std::thread::sleep(Duration::from_millis(10));
             }
         }
     }
