@@ -12,4 +12,8 @@ pub(crate) enum Command {
 }
 
 #[derive(clap::Parser)]
-pub(crate) struct BuildArgs {}
+pub(crate) struct BuildArgs {
+    /// Include draft pages in the output.
+    #[arg(long = "drafts")]
+    pub include_drafts: bool,
+}

@@ -58,7 +58,14 @@ pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
     let (error_tx, error_rx) = mpsc::channel();
     let template_env = minijinja::Environment::new();
     rayon::scope(|scope| {
-        ContentProcessor::new(BuildArgs {}, config, &template_env, scope, error_tx).dump()
+        ContentProcessor::new(
+            BuildArgs { include_drafts: true },
+            config,
+            &template_env,
+            scope,
+            error_tx,
+        )
+        .dump()
     })?;
 
     assert!(error_rx.recv().is_err());
@@ -229,27 +236,27 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
         );
 
         let pages = Arc::new(OnceLock::new());
-        let files: Vec<_> = {
-            files
-                // Should use par_iter here, but that causes deadlocks:
-                // https://github.com/rayon-rs/rayon/issues/969
-                .iter()
-                .enumerate()
-                .map(|(idx, path)| {
-                    let functions = context! {
-                        get_page => minijinja::Value::from_object(
-                            functions::GetPage::new(pages.clone(), subdirs.clone(), idx),
-                        ),
-                        get_pages => minijinja::Value::from(
-                            functions::GetPages::new(subdirs.clone()),
-                        ),
-                    };
+        let mut idx = 0;
+        let files = files.iter().try_fold(Vec::new(), |mut v, path| {
+            let functions = context! {
+                get_page => minijinja::Value::from_object(
+                    functions::GetPage::new(pages.clone(), subdirs.clone(), idx),
+                ),
+                get_pages => minijinja::Value::from(
+                    functions::GetPages::new(subdirs.clone()),
+                ),
+            };
 
-                    self.process_content_file(path, functions.clone(), write_output)
-                        .with_context(|| format!("processing `{path}`"))
-                })
-                .collect::<anyhow::Result<_>>()?
-        };
+            if let Some(file) = self
+                .process_content_file(path, functions.clone(), write_output)
+                .with_context(|| format!("processing `{path}`"))?
+            {
+                idx += 1;
+                v.push(file);
+            }
+
+            anyhow::Ok(v)
+        })?;
 
         let (pages_vec, assets) = files.into_iter().partition_map(|file_meta| match file_meta {
             FileMetadata::Page(meta) => Either::Left(meta),
@@ -266,15 +273,18 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
         content_path: &Utf8Path,
         functions: minijinja::Value,
         write_output: WriteOutput,
-    ) -> anyhow::Result<FileMetadata> {
+    ) -> anyhow::Result<Option<FileMetadata>> {
         let page_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
 
         let mut input_file = BufReader::new(File::open(content_path)?);
 
-        Ok(match parse_frontmatter(&mut input_file)? {
+        Ok(Some(match parse_frontmatter(&mut input_file)? {
             Some(frontmatter) => {
                 let page_meta = self.page_metadata(page_path, frontmatter)?;
+                if !self.args.include_drafts && page_meta.draft {
+                    return Ok(None);
+                }
 
                 if let WriteOutput::Yes = write_output {
                     self.render_page(&page_meta, functions, input_file)?;
@@ -287,7 +297,7 @@ impl<'t: 'sc, 's, 'sc> ContentProcessor<'t, 's, 'sc> {
 
                 FileMetadata::Asset(self.process_asset(write_output, page_path, content_path)?)
             }
-        })
+        }))
     }
 
     fn page_metadata(
