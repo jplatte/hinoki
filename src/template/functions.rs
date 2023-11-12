@@ -9,7 +9,6 @@ use std::{
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
-use itertools::Itertools;
 use minijinja::{
     value::{from_args, Kwargs, Object},
     ErrorKind, Value,
@@ -20,7 +19,10 @@ use serde::{
 };
 use tracing::warn;
 
-use crate::content::{DirectoryMetadata, PageMetadata};
+use crate::{
+    content::{DirectoryMetadata, PageMetadata},
+    util::OrderBiMap,
+};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -211,28 +213,4 @@ pub(super) fn load_data(path: String) -> Result<Value, minijinja::Error> {
 
     let file_contents = fs::read_to_string(path).map_err(make_error)?;
     deserialize(&file_contents)
-}
-
-#[derive(Debug)]
-struct OrderBiMap {
-    ordered_to_original: Vec<usize>,
-    original_to_ordered: Vec<usize>,
-}
-
-impl OrderBiMap {
-    fn new<T, K: Ord>(original: &[T], key_fn: impl Fn(&T) -> K) -> Self {
-        let ordered_to_original: Vec<_> = original
-            .iter()
-            .enumerate()
-            .sorted_by_key(|(_, item)| key_fn(item))
-            .map(|(idx, _)| idx)
-            .collect();
-
-        let mut original_to_ordered = vec![0; original.len()];
-        for (ordered, &original) in ordered_to_original.iter().enumerate() {
-            original_to_ordered[original] = ordered;
-        }
-
-        Self { ordered_to_original, original_to_ordered }
-    }
 }

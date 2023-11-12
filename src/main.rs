@@ -6,6 +6,7 @@ mod cli;
 mod config;
 mod content;
 mod template;
+mod util;
 
 use self::{
     cli::{CliArgs, Command},
