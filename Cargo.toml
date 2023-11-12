@@ -5,10 +5,15 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [features]
-default = ["markdown"]
+default = ["markdown", "datetime"]
 
 # Markdown to HTML support
 markdown = ["dep:pulldown-cmark"]
+
+# Filters for formatting timestamps as date / time / datetime
+datetime = ["dep:minijinja-contrib"]
+# Support for timezone conversion for timestamp formatting filters
+timezone = ["datetime", "minijinja-contrib?/timezone"]
 
 # Allow JSON files to be loaded with load_data
 json = ["dep:serde_json"]
@@ -29,6 +34,7 @@ globset = { version = "0.4.13", default-features = false }
 indexmap = { version = "2.0.2", features = ["serde"] }
 itertools = "0.11.0"
 minijinja = { version = "1.0.7", features = ["custom_syntax", "loader"] }
+minijinja-contrib = { version = "1.0.10", features = ["datetime"], optional = true }
 pulldown-cmark = { version = "0.9.3", optional = true }
 rayon = "1.8.0"
 serde = { version = "1.0.188", features = ["derive"] }
