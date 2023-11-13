@@ -4,7 +4,7 @@ use std::{
     sync::{mpsc, Arc, OnceLock},
 };
 
-use anyhow::{format_err, Context as _};
+use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
@@ -12,10 +12,9 @@ use itertools::{Either, Itertools};
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
-use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
+use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
 use tracing::{debug, instrument, trace, warn};
-use walkdir::WalkDir;
 
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
@@ -26,7 +25,7 @@ use self::{
 use crate::{
     cli::BuildArgs,
     config::Config,
-    template::{self, functions},
+    template::{functions, load_templates},
 };
 
 mod frontmatter;
@@ -90,7 +89,6 @@ pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
 
     Ok(())
 }
-
 struct ContentProcessor<'a, 's, 'sc> {
     // FIXME: args, template_env, render_scope only actually needed for
     // building, not for dumping. Make a trait for those two instead of
@@ -103,80 +101,6 @@ struct ContentProcessor<'a, 's, 'sc> {
     error_tx: mpsc::Sender<anyhow::Error>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
-}
-
-fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
-    struct TemplateSource<'b> {
-        /// Path relative to the template directory
-        rel_path: &'b str,
-        /// File contents
-        source: &'b str,
-    }
-
-    let mut template_env = template::environment();
-
-    let (template_source_tx, template_source_rx) = mpsc::channel();
-    let read_templates = move || {
-        WalkDir::new("theme/templates/").into_iter().par_bridge().try_for_each_init(
-            || alloc.get(),
-            move |alloc, entry| {
-                let entry = entry?;
-                if entry.file_type().is_dir() {
-                    return Ok(());
-                }
-
-                let Some(utf8_path) = Utf8Path::from_path(entry.path()) else {
-                    warn!("Skipping non-utf8 file `{}`", entry.path().display());
-                    return Ok(());
-                };
-                let rel_path =
-                    utf8_path.strip_prefix("theme/templates/").context("invalid WalkDir item")?;
-
-                let template_file_content = fs::read_to_string(utf8_path)?;
-
-                template_source_tx
-                    .send(TemplateSource {
-                        rel_path: alloc.alloc_str(rel_path.as_str()),
-                        source: alloc.alloc_str(&template_file_content),
-                    })
-                    .map_err(|_| {
-                        // If the channel was closed by the receiving side, that
-                        // implies an error in adding templates, which will be
-                        // printed independently. Thus we don't need a good
-                        // error message here, it will probably never be
-                        // printed anyways.
-                        //
-                        // It is important to discard the original `SendError`
-                        // though, which can't be converted to `anyhow::Error`
-                        // because it's not `'static` (the compile errors from
-                        // this are completely inscrutable and I only found out
-                        // by experimenting).
-                        format_err!("channel closed")
-                    })?;
-
-                anyhow::Ok(())
-            },
-        )
-    };
-
-    let template_env_ref = &mut template_env;
-    let add_templates = move || {
-        while let Ok(TemplateSource { rel_path, source }) = template_source_rx.recv() {
-            template_env_ref.add_template(rel_path, source)?;
-        }
-
-        anyhow::Ok(())
-    };
-
-    let (read_templates_result, add_templates_result) = rayon::join(read_templates, add_templates);
-
-    // Prioritize errors from add_templates, if it fails then read_templates
-    // almost definitely also fails with a RecvError and the case of a
-    // parallel I/O error is super rare and not very important.
-    add_templates_result?;
-    read_templates_result?;
-
-    Ok(template_env)
 }
 
 impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
