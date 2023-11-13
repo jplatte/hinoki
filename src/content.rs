@@ -43,23 +43,12 @@ pub(crate) use self::{
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
-    let syntax_highlighter = OnceCell::new();
+    let ctx = ContentProcessorContext::new(template_env);
 
     fs::create_dir_all(&config.output_dir)?;
 
     let (error_tx, error_rx) = mpsc::channel();
-    rayon::scope(|scope| {
-        ContentProcessor::new(
-            args,
-            config,
-            &template_env,
-            scope,
-            error_tx,
-            #[cfg(feature = "syntax-highlighting")]
-            &syntax_highlighter,
-        )
-        .run()
-    })?;
+    rayon::scope(|scope| ContentProcessor::new(args, config, scope, error_tx, &ctx).run())?;
 
     if let Ok(e) = error_rx.recv() {
         return Err(e);
@@ -70,47 +59,36 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
 
 pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
     let (error_tx, error_rx) = mpsc::channel();
-    let template_env = minijinja::Environment::new();
-    let syntax_highlighter = OnceCell::new();
+    let ctx = ContentProcessorContext::default();
+
     rayon::scope(|scope| {
-        ContentProcessor::new(
-            BuildArgs { include_drafts: true },
-            config,
-            &template_env,
-            scope,
-            error_tx,
-            #[cfg(feature = "syntax-highlighting")]
-            &syntax_highlighter,
-        )
-        .dump()
+        ContentProcessor::new(BuildArgs { include_drafts: true }, config, scope, error_tx, &ctx)
+            .dump()
     })?;
 
     assert!(error_rx.recv().is_err());
 
     Ok(())
 }
-struct ContentProcessor<'a, 's, 'sc> {
+struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, render_scope only actually needed for
     // building, not for dumping. Make a trait for those two instead of
     // branching internally?
     args: BuildArgs,
     config: Config,
-    template_env: &'a minijinja::Environment<'a>,
     metadata_env: minijinja::Environment<'static>,
     render_scope: &'s rayon::Scope<'sc>,
     error_tx: mpsc::Sender<anyhow::Error>,
-    #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
+    ctx: &'c ContentProcessorContext<'c>,
 }
 
-impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
+impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn new(
         args: BuildArgs,
         config: Config,
-        template_env: &'a minijinja::Environment<'a>,
         render_scope: &'s rayon::Scope<'sc>,
         error_tx: mpsc::Sender<anyhow::Error>,
-        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
+        ctx: &'c ContentProcessorContext<'c>,
     ) -> Self {
         let mut metadata_env = minijinja::Environment::empty();
         metadata_env
@@ -125,16 +103,7 @@ impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
             .expect("custom minijinja syntax is valid");
         metadata_env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
 
-        Self {
-            args,
-            config,
-            template_env,
-            metadata_env,
-            render_scope,
-            error_tx,
-            #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter,
-        }
+        Self { args, config, metadata_env, render_scope, error_tx, ctx }
     }
 
     fn run(&self) -> anyhow::Result<()> {
@@ -325,10 +294,8 @@ impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
             );
         }
 
-        let template_env = self.template_env;
+        let ctx = self.ctx;
         let output_path = self.output_path(&page_meta.path);
-        #[cfg(feature = "syntax-highlighting")]
-        let syntax_highlighter = self.syntax_highlighter;
 
         let span = tracing::Span::current();
         let error_tx = self.error_tx.clone();
@@ -336,15 +303,7 @@ impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render_page(
-                template_env,
-                page_meta,
-                input_file,
-                output_path,
-                #[cfg(feature = "syntax-highlighting")]
-                syntax_highlighter,
-                functions,
-            ) {
+            if let Err(e) = render_page(page_meta, input_file, output_path, functions, ctx) {
                 error_tx.send(e).unwrap();
             }
         });
@@ -375,15 +334,31 @@ impl<'a: 'sc, 's, 'sc> ContentProcessor<'a, 's, 'sc> {
     }
 }
 
+#[derive(Default)]
+struct ContentProcessorContext<'t> {
+    template_env: minijinja::Environment<'t>,
+    #[cfg(feature = "syntax-highlighting")]
+    syntax_highlighter: OnceCell<SyntaxHighlighter>,
+}
+
+impl<'t> ContentProcessorContext<'t> {
+    fn new(template_env: minijinja::Environment<'t>) -> Self {
+        Self {
+            template_env,
+            #[cfg(feature = "syntax-highlighting")]
+            syntax_highlighter: OnceCell::new(),
+        }
+    }
+}
+
 fn render_page(
-    template_env: &minijinja::Environment<'_>,
     page_meta: PageMetadata,
     mut input_file: BufReader<File>,
     output_path: Utf8PathBuf,
-    #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &OnceCell<SyntaxHighlighter>,
     functions: minijinja::Value,
+    ctx: &ContentProcessorContext<'_>,
 ) -> anyhow::Result<()> {
-    let template = template_env.get_template(page_meta.template.as_str())?;
+    let template = ctx.template_env.get_template(page_meta.template.as_str())?;
 
     let mut content = String::new();
     input_file.read_to_string(&mut content)?;
@@ -399,7 +374,7 @@ fn render_page(
         let mut html_buf = String::new();
 
         #[cfg(feature = "syntax-highlighting")]
-        let syntax_highlighter = syntax_highlighter.get_or_try_init(SyntaxHighlighter::new)?;
+        let syntax_highlighter = ctx.syntax_highlighter.get_or_try_init(SyntaxHighlighter::new)?;
 
         #[cfg(feature = "syntax-highlighting")]
         if let Some(theme) =
