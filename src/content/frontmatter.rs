@@ -27,13 +27,6 @@ pub(crate) struct Frontmatter {
     /// If it ends in `/`, `index.html` is implicitly appended.
     pub path: Option<String>,
 
-    /// Alias paths for this page.
-    ///
-    /// Every path in this list will be generated as another page in the output,
-    /// rendered with the builtin `alias.html` template.
-    #[serde(default)]
-    pub aliases: Vec<Utf8PathBuf>,
-
     /// Page title.
     pub title: Option<String>,
 
