@@ -43,12 +43,11 @@ pub(crate) use self::{
 pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
     let alloc = Herd::new();
     let template_env = load_templates(&alloc)?;
-    let ctx = ContentProcessorContext::new(template_env);
-
-    fs::create_dir_all(&config.output_dir)?;
 
     let (error_tx, error_rx) = mpsc::channel();
-    rayon::scope(|scope| ContentProcessor::new(args, config, scope, error_tx, &ctx).run())?;
+    let ctx = ContentProcessorContext::new(args, config, template_env);
+
+    rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).run())?;
 
     if let Ok(e) = error_rx.recv() {
         return Err(e);
@@ -59,23 +58,23 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
 
 pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
     let (error_tx, error_rx) = mpsc::channel();
-    let ctx = ContentProcessorContext::default();
+    let ctx = ContentProcessorContext::new(
+        BuildArgs { include_drafts: true },
+        config,
+        minijinja::Environment::empty(),
+    );
 
-    rayon::scope(|scope| {
-        ContentProcessor::new(BuildArgs { include_drafts: true }, config, scope, error_tx, &ctx)
-            .dump()
-    })?;
+    rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).dump())?;
 
     assert!(error_rx.recv().is_err());
 
     Ok(())
 }
 struct ContentProcessor<'c, 's, 'sc> {
-    // FIXME: args, template_env, render_scope only actually needed for
-    // building, not for dumping. Make a trait for those two instead of
-    // branching internally?
-    args: BuildArgs,
-    config: Config,
+    // FIXME: args, template_env, syntax_highlighter (in ctx) plus render_scope
+    // only actually needed for building, not for dumping. Abstract using a
+    // trait an abstract build vs. dump behavior that way instead of internal
+    // branching?
     metadata_env: minijinja::Environment<'static>,
     render_scope: &'s rayon::Scope<'sc>,
     error_tx: mpsc::Sender<anyhow::Error>,
@@ -84,8 +83,6 @@ struct ContentProcessor<'c, 's, 'sc> {
 
 impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn new(
-        args: BuildArgs,
-        config: Config,
         render_scope: &'s rayon::Scope<'sc>,
         error_tx: mpsc::Sender<anyhow::Error>,
         ctx: &'c ContentProcessorContext<'c>,
@@ -103,7 +100,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             .expect("custom minijinja syntax is valid");
         metadata_env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
 
-        Self { args, config, metadata_env, render_scope, error_tx, ctx }
+        Self { metadata_env, render_scope, error_tx, ctx }
     }
 
     fn run(&self) -> anyhow::Result<()> {
@@ -205,7 +202,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         Ok(Some(match parse_frontmatter(&mut input_file)? {
             Some(frontmatter) => {
                 let page_meta = self.page_metadata(page_path, frontmatter)?;
-                if !self.args.include_drafts && page_meta.draft {
+                if !self.ctx.args.include_drafts && page_meta.draft {
                     return Ok(None);
                 }
 
@@ -234,7 +231,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             // TODO: More fields
         }
 
-        for defaults in self.config.defaults.for_path(&page_path).rev() {
+        for defaults in self.ctx.config.defaults.for_path(&page_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
 
@@ -295,15 +292,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         }
 
         let ctx = self.ctx;
-        let output_path = self.output_path(&page_meta.path);
-
         let span = tracing::Span::current();
         let error_tx = self.error_tx.clone();
 
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render_page(page_meta, input_file, output_path, functions, ctx) {
+            if let Err(e) = render_page(page_meta, input_file, functions, ctx) {
                 error_tx.send(e).unwrap();
             }
         });
@@ -318,7 +313,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         content_path: &Utf8Path,
     ) -> anyhow::Result<AssetMetadata> {
         if let WriteOutput::Yes = write_output {
-            let output_path = self.output_path(&page_path);
+            let output_path = self.ctx.output_path(&page_path);
 
             debug!("copying file without frontmatter verbatim");
             // todo: keep track of dirs created to avoid extra create_dir_all's?
@@ -328,33 +323,35 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         Ok(AssetMetadata::new(page_path))
     }
-
-    fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
-        self.config.output_dir.join(page_path)
-    }
 }
 
-#[derive(Default)]
 struct ContentProcessorContext<'t> {
+    args: BuildArgs,
+    config: Config,
     template_env: minijinja::Environment<'t>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
 }
 
 impl<'t> ContentProcessorContext<'t> {
-    fn new(template_env: minijinja::Environment<'t>) -> Self {
+    fn new(args: BuildArgs, config: Config, template_env: minijinja::Environment<'t>) -> Self {
         Self {
+            args,
+            config,
             template_env,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
         }
+    }
+
+    fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
+        self.config.output_dir.join(page_path)
     }
 }
 
 fn render_page(
     page_meta: PageMetadata,
     mut input_file: BufReader<File>,
-    output_path: Utf8PathBuf,
     functions: minijinja::Value,
     ctx: &ContentProcessorContext<'_>,
 ) -> anyhow::Result<()> {
@@ -363,6 +360,7 @@ fn render_page(
     let mut content = String::new();
     input_file.read_to_string(&mut content)?;
 
+    let output_path = ctx.output_path(&page_meta.path);
     fs::create_dir_all(output_path.parent().unwrap())?;
     let output_file = File::create(output_path)?;
 
