@@ -14,7 +14,7 @@ pub(crate) struct Frontmatter {
 
     /// Path of the template to use for this page.
     ///
-    /// Relative to the `templates` directory.
+    /// Relative to the `theme/templates` directory.
     pub template: Option<Utf8PathBuf>,
 
     /// What kind of processing should be done on the content, if any.
@@ -24,8 +24,6 @@ pub(crate) struct Frontmatter {
     pub syntax_highlight_theme: Option<String>,
 
     /// Custom rendered path for this page.
-    ///
-    /// If it ends in `/`, `index.html` is implicitly appended.
     pub path: Option<String>,
 
     /// Page title.
