@@ -5,10 +5,12 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [features]
-default = ["markdown", "syntax-highlighting", "datetime"]
+default = ["markdown", "sass", "syntax-highlighting", "datetime"]
 
 # Markdown to HTML support
 markdown = ["dep:pulldown-cmark"]
+# Sass/SCSS support
+sass = ["dep:rsass"]
 # Syntax highlighting for markdown code blocks
 syntax-highlighting = ["markdown", "dep:once_cell", "dep:syntect"]
 
@@ -39,6 +41,7 @@ minijinja-contrib = { version = "1.0.10", features = ["datetime"], optional = tr
 once_cell = { version = "1.18.0", optional = true }
 pulldown-cmark = { version = "0.9.3", optional = true }
 rayon = "1.8.0"
+rsass = { version = "0.28.6", optional = true }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = { version = "1.0.107", optional = true }
 serde_yaml = { version = "0.9.25", optional = true }

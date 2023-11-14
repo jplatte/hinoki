@@ -5,6 +5,7 @@ use tracing::error;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use hinoki::{
+    assets,
     cli::{CliArgs, Command},
     content::{build, dump},
     read_config,

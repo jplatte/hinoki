@@ -15,11 +15,10 @@ use fs_err::{self as fs, File};
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
-use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
+use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
 use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
-use walkdir::WalkDir;
 
 use self::markdown::markdown_to_html;
 #[cfg(feature = "markdown")]
@@ -27,6 +26,7 @@ use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
 use crate::{
+    assets::{AssetsProcessor, AssetsProcessorContext},
     build::BuildDirManager,
     cli::BuildArgs,
     config::Config,
@@ -54,51 +54,24 @@ pub fn build(args: BuildArgs, config: Config) -> ExitCode {
     ) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&alloc)?;
-        let ctx = ContentProcessorContext::new(args, config, template_env, build_dir_mgr);
-        rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
-        Ok(ctx.did_error.load(Ordering::Relaxed))
-    }
-
-    fn copy_static_files(build_dir_mgr: &BuildDirManager) -> anyhow::Result<()> {
-        WalkDir::new("theme/static/").into_iter().par_bridge().try_for_each(|entry| {
-            let entry = entry?;
-            if entry.file_type().is_dir() {
-                return Ok(());
-            }
-
-            let Some(utf8_path) = Utf8Path::from_path(entry.path()) else {
-                warn!("Skipping non-utf8 file `{}`", entry.path().display());
-                return Ok(());
-            };
-
-            let rel_path =
-                utf8_path.strip_prefix("theme/static/").context("invalid WalkDir item")?;
-            let output_path = build_dir_mgr.output_path(rel_path, utf8_path)?;
-
-            fs::copy(utf8_path, output_path)?;
-            Ok(())
-        })
+        let content_processor_ctx =
+            ContentProcessorContext::new(args, config, template_env, build_dir_mgr);
+        let asset_processor_ctx = AssetsProcessorContext::new(build_dir_mgr);
+        rayon::scope(|scope| {
+            ContentProcessor::new(scope, &content_processor_ctx).run();
+            AssetsProcessor::new(scope, &asset_processor_ctx).run();
+        });
+        Ok(content_processor_ctx.did_error.load(Ordering::Relaxed))
     }
 
     let build_dir_mgr = BuildDirManager::new(config.output_dir.clone());
 
-    let (r1, r2) = rayon::join(
-        || build_inner(args, config, &build_dir_mgr),
-        || copy_static_files(&build_dir_mgr),
-    );
-
-    match (r1, r2) {
-        (Err(e1), Err(e2)) => {
-            error!("{e1:#}");
-            error!("{e2:#}");
-            ExitCode::FAILURE
-        }
-        (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
+    match build_inner(args, config, &build_dir_mgr) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => {
             error!("{e:#}");
             ExitCode::FAILURE
         }
-        (Ok(true), Ok(())) => ExitCode::FAILURE,
-        (Ok(false), Ok(())) => ExitCode::SUCCESS,
     }
 }
 

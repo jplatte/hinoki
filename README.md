@@ -17,7 +17,7 @@ Feel free to open issues for anything that is unclear!
 - [x] Custom defaults for frontmatter via path patterns
 - [ ] Pagination
 - [ ] Development server
-- [ ] SCSS compilation
+- [x] SCSS compilation
 - [ ] Page summaries
 
 ## How to install
@@ -36,7 +36,7 @@ The basic structure for a site you build with `hinoki` is this:
 ├ build        # Default output directory
 ├ content      # Content of the site, e.g. markdown files
 └ theme
-  ├ static     # Static files
+  ├ assets     # Sass/SCSS files, static files, etc.
   ├ sublime    # Sublime `.tmTheme` files
   └ templates  # MiniJinja templates
 ```
