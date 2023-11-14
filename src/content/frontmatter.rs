@@ -5,9 +5,7 @@ use camino::Utf8PathBuf;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::config::DefaultsForPath;
-
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Frontmatter {
     /// If set to `true`, this page will only be included in the output if
@@ -41,15 +39,21 @@ pub(crate) struct Frontmatter {
 }
 
 impl Frontmatter {
-    pub(crate) fn apply_defaults(&mut self, defaults: &DefaultsForPath) {
-        if self.path.is_none() {
-            self.path = defaults.path.clone();
+    pub(crate) fn apply_defaults(&mut self, defaults: &Frontmatter) {
+        if self.draft.is_none() {
+            self.draft = defaults.draft;
         }
         if self.template.is_none() {
             self.template = defaults.template.clone();
         }
         if self.process_content.is_none() {
             self.process_content = defaults.process_content;
+        }
+        if self.syntax_highlight_theme.is_none() {
+            self.syntax_highlight_theme = defaults.syntax_highlight_theme.clone();
+        }
+        if self.path.is_none() {
+            self.path = defaults.path.clone();
         }
         if self.title.is_none() {
             self.title = defaults.title.clone();

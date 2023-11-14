@@ -19,10 +19,7 @@ use tracing::{debug, error, instrument, trace, warn};
 
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
-use self::{
-    frontmatter::{parse_frontmatter, Frontmatter},
-    metadata::FileMetadata,
-};
+use self::{frontmatter::parse_frontmatter, metadata::FileMetadata};
 use crate::{
     cli::BuildArgs,
     config::Config,
@@ -35,7 +32,7 @@ mod metadata;
 mod syntax_highlighting;
 
 pub(crate) use self::{
-    frontmatter::ProcessContent,
+    frontmatter::{Frontmatter, ProcessContent},
     metadata::{AssetMetadata, DirectoryMetadata, PageMetadata},
 };
 
