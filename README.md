@@ -77,7 +77,7 @@ The following things can be configured in frontmatter (and thus config defaults)
 # This excludes it from build output by default.
 # Use the `--drafts` command-line option to include draft pages.
 draft = true
-# Path of the teamplate to use for this page.
+# Path of the template to use for this page.
 #
 # Relative to the `theme/templates` directory.
 template = "my_tpl.html"
