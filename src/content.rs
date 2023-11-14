@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::{BufReader, Read},
+    process::ExitCode,
     sync::{mpsc, Arc, OnceLock},
 };
 
@@ -14,7 +15,7 @@ use minijinja::context;
 use once_cell::sync::OnceCell;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
-use tracing::{debug, instrument, trace, warn};
+use tracing::{debug, error, instrument, trace, warn};
 
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
@@ -38,25 +39,28 @@ pub(crate) use self::{
     metadata::{AssetMetadata, DirectoryMetadata, PageMetadata},
 };
 
-// FIXME: Collect errors instead of returning only the first
-
-pub(crate) fn build(args: BuildArgs, config: Config) -> anyhow::Result<()> {
+pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
     let alloc = Herd::new();
-    let template_env = load_templates(&alloc)?;
+    let template_env = match load_templates(&alloc) {
+        Ok(env) => env,
+        Err(e) => return anyhow_exit(e),
+    };
 
     let (error_tx, error_rx) = mpsc::channel();
     let ctx = ContentProcessorContext::new(args, config, template_env);
 
-    rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).run())?;
+    let res = rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).run());
+    let errors = res.err().into_iter().chain(error_rx.iter());
 
-    if let Ok(e) = error_rx.recv() {
-        return Err(e);
+    let mut exit = ExitCode::SUCCESS;
+    for e in errors {
+        exit = anyhow_exit(e);
     }
 
-    Ok(())
+    exit
 }
 
-pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
+pub(crate) fn dump(config: Config) -> ExitCode {
     let (error_tx, error_rx) = mpsc::channel();
     let ctx = ContentProcessorContext::new(
         BuildArgs { include_drafts: true },
@@ -64,12 +68,20 @@ pub(crate) fn dump(config: Config) -> anyhow::Result<()> {
         minijinja::Environment::empty(),
     );
 
-    rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).dump())?;
-
+    let res = rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).dump());
     assert!(error_rx.recv().is_err());
 
-    Ok(())
+    match res {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => anyhow_exit(e),
+    }
 }
+
+fn anyhow_exit(error: anyhow::Error) -> ExitCode {
+    error!("{error}");
+    ExitCode::FAILURE
+}
+
 struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, syntax_highlighter (in ctx) plus render_scope
     // only actually needed for building, not for dumping. Abstract using a
