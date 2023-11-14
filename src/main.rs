@@ -6,6 +6,7 @@ use fs_err as fs;
 use tracing::{error, warn};
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+mod build;
 mod cli;
 mod config;
 mod content;

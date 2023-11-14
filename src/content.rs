@@ -1,11 +1,11 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::BTreeMap,
     io::{BufReader, Read},
     process::ExitCode,
-    sync::{mpsc, Arc, Mutex, OnceLock, RwLock},
+    sync::{mpsc, Arc, OnceLock},
 };
 
-use anyhow::{bail, Context as _};
+use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
@@ -13,16 +13,18 @@ use itertools::{Either, Itertools};
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
-use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
+use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
 use tracing::{debug, error, instrument, trace, warn};
+use walkdir::WalkDir;
 
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
 use self::{frontmatter::parse_frontmatter, metadata::FileMetadata};
 use crate::{
+    build::BuildDirManager,
     cli::BuildArgs,
-    config::Config,
+    config::{Config, Defaults},
     template::{functions, load_templates},
 };
 
@@ -37,17 +39,48 @@ pub(crate) use self::{
 };
 
 pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
-    let alloc = Herd::new();
-    let template_env = match load_templates(&alloc) {
-        Ok(env) => env,
-        Err(e) => return anyhow_exit(e),
-    };
+    fn build_inner(
+        args: BuildArgs,
+        defaults: Defaults,
+        build_dir_mgr: &BuildDirManager,
+        error_tx: mpsc::Sender<anyhow::Error>,
+    ) -> anyhow::Result<()> {
+        let alloc = Herd::new();
+        let template_env = load_templates(&alloc)?;
+        let ctx = ContentProcessorContext::new(args, defaults, template_env, build_dir_mgr);
+        rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).run())
+    }
+
+    fn copy_static_files(build_dir_mgr: &BuildDirManager) -> anyhow::Result<()> {
+        WalkDir::new("theme/static/").into_iter().par_bridge().try_for_each(|entry| {
+            let entry = entry?;
+            if entry.file_type().is_dir() {
+                return Ok(());
+            }
+
+            let Some(utf8_path) = Utf8Path::from_path(entry.path()) else {
+                warn!("Skipping non-utf8 file `{}`", entry.path().display());
+                return Ok(());
+            };
+
+            let rel_path =
+                utf8_path.strip_prefix("theme/static/").context("invalid WalkDir item")?;
+            let output_path = build_dir_mgr.output_path(rel_path, utf8_path)?;
+
+            fs::copy(utf8_path, output_path)?;
+            Ok(())
+        })
+    }
 
     let (error_tx, error_rx) = mpsc::channel();
-    let ctx = ContentProcessorContext::new(args, config, template_env);
+    let build_dir_mgr = BuildDirManager::new(config.output_dir);
 
-    let res = rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).run());
-    let errors = res.err().into_iter().chain(error_rx.iter());
+    let (r1, r2) = rayon::join(
+        || build_inner(args, config.defaults, &build_dir_mgr, error_tx),
+        || copy_static_files(&build_dir_mgr),
+    );
+
+    let errors = r1.err().into_iter().chain(r2.err()).chain(error_rx.iter());
 
     let mut exit = ExitCode::SUCCESS;
     for e in errors {
@@ -59,10 +92,12 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
 
 pub(crate) fn dump(config: Config) -> ExitCode {
     let (error_tx, error_rx) = mpsc::channel();
+    let build_dir_mgr = BuildDirManager::new("".into());
     let ctx = ContentProcessorContext::new(
         BuildArgs { include_drafts: true },
-        config,
+        config.defaults,
         minijinja::Environment::empty(),
+        &build_dir_mgr,
     );
 
     let res = rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).dump());
@@ -240,7 +275,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             // TODO: More fields
         }
 
-        for defaults in self.ctx.config.defaults.for_path(&page_path).rev() {
+        for defaults in self.ctx.defaults.for_path(&page_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
 
@@ -333,36 +368,29 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     }
 }
 
-struct ContentProcessorContext<'t> {
+struct ContentProcessorContext<'a> {
     args: BuildArgs,
-    config: Config,
-    template_env: minijinja::Environment<'t>,
+    defaults: Defaults,
+    template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
-
-    /// Set of output directories created in the build process.
-    ///
-    /// Used to avoid redundant syscalls for creating already-existing
-    /// directories.
-    output_dirs: RwLock<HashSet<Utf8PathBuf>>,
-    /// Set of output files mapped to the path of the corresponding content
-    /// file.
-    ///
-    /// Used to detect conflicts between multiple content files wanting to
-    /// write the same output.
-    output_files: Mutex<HashMap<Utf8PathBuf, Utf8PathBuf>>,
+    build_dir_mgr: &'a BuildDirManager,
 }
 
-impl<'t> ContentProcessorContext<'t> {
-    fn new(args: BuildArgs, config: Config, template_env: minijinja::Environment<'t>) -> Self {
+impl<'a> ContentProcessorContext<'a> {
+    fn new(
+        args: BuildArgs,
+        defaults: Defaults,
+        template_env: minijinja::Environment<'a>,
+        build_dir_mgr: &'a BuildDirManager,
+    ) -> Self {
         Self {
             args,
-            config,
+            defaults,
             template_env,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
-            output_dirs: Default::default(),
-            output_files: Default::default(),
+            build_dir_mgr,
         }
     }
 
@@ -371,25 +399,7 @@ impl<'t> ContentProcessorContext<'t> {
         page_path: &Utf8Path,
         content_path: &Utf8Path,
     ) -> anyhow::Result<Utf8PathBuf> {
-        let path = self.config.output_dir.join(page_path);
-        let dir = path.parent().unwrap();
-
-        // This is racy, but that's okay.
-        let dir_exists = self.output_dirs.read().unwrap().contains(dir);
-        if !dir_exists {
-            fs::create_dir_all(path.parent().unwrap())?;
-            self.output_dirs.write().unwrap().insert(dir.to_owned());
-        }
-
-        let result =
-            self.output_files.lock().unwrap().insert(page_path.to_owned(), content_path.to_owned());
-        if let Some(other_content_path) = result {
-            bail!(
-                "Path conflict: `{content_path}` and `{other_content_path}` both map to `{path}`"
-            );
-        }
-
-        Ok(path)
+        self.build_dir_mgr.output_path(page_path, content_path)
     }
 }
 

@@ -36,8 +36,9 @@ The basic structure for a site you build with `hinoki` is this:
 ├ build        # Default output directory
 ├ content      # Content of the site, e.g. markdown files
 └ theme
-  ├ templates  # MiniJinja templates
-  └ sublime    # Sublime `.tmTheme` files
+  ├ static     # Static files
+  ├ sublime    # Sublime `.tmTheme` files
+  └ templates  # MiniJinja templates
 ```
 
 After installing it, you can run `hinoki build` in such a directory to populate the output directory.
