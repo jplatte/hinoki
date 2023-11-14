@@ -1,6 +1,6 @@
 # Hinoki
 
-A simple, yet very flexible static site generator. It's also very fast.
+A simple, yet very flexible static site generator. It's also super fast.
 
 It's early days for this project, and this readme is currently all there is in terms of documentation.
 Feel free to open issues for anything that is unclear!
