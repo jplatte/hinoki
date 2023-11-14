@@ -1,11 +1,11 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     io::{BufReader, Read},
     process::ExitCode,
-    sync::{mpsc, Arc, OnceLock},
+    sync::{mpsc, Arc, Mutex, OnceLock, RwLock},
 };
 
-use anyhow::Context as _;
+use anyhow::{bail, Context as _};
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
@@ -177,7 +177,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             };
 
             if let Some(file) = self
-                .process_content_file(path, functions.clone(), write_output)
+                .process_content_file(path.clone(), functions.clone(), write_output)
                 .with_context(|| format!("processing `{path}`"))?
             {
                 idx += 1;
@@ -199,14 +199,14 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     #[instrument(skip_all, fields(?content_path))]
     fn process_content_file(
         &self,
-        content_path: &Utf8Path,
+        content_path: Utf8PathBuf,
         functions: minijinja::Value,
         write_output: WriteOutput,
     ) -> anyhow::Result<Option<FileMetadata>> {
         let page_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
 
-        let mut input_file = BufReader::new(File::open(content_path)?);
+        let mut input_file = BufReader::new(File::open(&content_path)?);
 
         Ok(Some(match parse_frontmatter(&mut input_file)? {
             Some(frontmatter) => {
@@ -216,7 +216,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                 }
 
                 if let WriteOutput::Yes = write_output {
-                    self.render_page(page_meta.clone(), functions, input_file)?;
+                    self.render_page(page_meta.clone(), functions, input_file, content_path)?;
                 }
 
                 FileMetadata::Page(page_meta)
@@ -224,7 +224,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             None => {
                 drop(input_file);
 
-                FileMetadata::Asset(self.process_asset(write_output, page_path, content_path)?)
+                FileMetadata::Asset(self.process_asset(write_output, page_path, &content_path)?)
             }
         }))
     }
@@ -291,6 +291,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         page_meta: PageMetadata,
         functions: minijinja::Value,
         input_file: BufReader<File>,
+        content_path: Utf8PathBuf,
     ) -> anyhow::Result<()> {
         #[cfg(not(feature = "markdown"))]
         if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
@@ -307,7 +308,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render_page(page_meta, input_file, functions, ctx) {
+            if let Err(e) = render_page(page_meta, input_file, functions, ctx, content_path) {
                 error_tx.send(e).unwrap();
             }
         });
@@ -322,11 +323,9 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         content_path: &Utf8Path,
     ) -> anyhow::Result<AssetMetadata> {
         if let WriteOutput::Yes = write_output {
-            let output_path = self.ctx.output_path(&page_path);
+            let output_path = self.ctx.output_path(&page_path, content_path)?;
 
             debug!("copying file without frontmatter verbatim");
-            // todo: keep track of dirs created to avoid extra create_dir_all's?
-            fs::create_dir_all(output_path.parent().unwrap())?;
             fs::copy(content_path, output_path)?;
         }
 
@@ -340,6 +339,18 @@ struct ContentProcessorContext<'t> {
     template_env: minijinja::Environment<'t>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
+
+    /// Set of output directories created in the build process.
+    ///
+    /// Used to avoid redundant syscalls for creating already-existing
+    /// directories.
+    output_dirs: RwLock<HashSet<Utf8PathBuf>>,
+    /// Set of output files mapped to the path of the corresponding content
+    /// file.
+    ///
+    /// Used to detect conflicts between multiple content files wanting to
+    /// write the same output.
+    output_files: Mutex<HashMap<Utf8PathBuf, Utf8PathBuf>>,
 }
 
 impl<'t> ContentProcessorContext<'t> {
@@ -350,11 +361,35 @@ impl<'t> ContentProcessorContext<'t> {
             template_env,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
+            output_dirs: Default::default(),
+            output_files: Default::default(),
         }
     }
 
-    fn output_path(&self, page_path: &Utf8Path) -> Utf8PathBuf {
-        self.config.output_dir.join(page_path)
+    fn output_path(
+        &self,
+        page_path: &Utf8Path,
+        content_path: &Utf8Path,
+    ) -> anyhow::Result<Utf8PathBuf> {
+        let path = self.config.output_dir.join(page_path);
+        let dir = path.parent().unwrap();
+
+        // This is racy, but that's okay.
+        let dir_exists = self.output_dirs.read().unwrap().contains(dir);
+        if !dir_exists {
+            fs::create_dir_all(path.parent().unwrap())?;
+            self.output_dirs.write().unwrap().insert(dir.to_owned());
+        }
+
+        let result =
+            self.output_files.lock().unwrap().insert(page_path.to_owned(), content_path.to_owned());
+        if let Some(other_content_path) = result {
+            bail!(
+                "Path conflict: `{content_path}` and `{other_content_path}` both map to `{path}`"
+            );
+        }
+
+        Ok(path)
     }
 }
 
@@ -363,14 +398,14 @@ fn render_page(
     mut input_file: BufReader<File>,
     functions: minijinja::Value,
     ctx: &ContentProcessorContext<'_>,
+    content_path: Utf8PathBuf,
 ) -> anyhow::Result<()> {
     let template = ctx.template_env.get_template(page_meta.template.as_str())?;
 
     let mut content = String::new();
     input_file.read_to_string(&mut content)?;
 
-    let output_path = ctx.output_path(&page_meta.path);
-    fs::create_dir_all(output_path.parent().unwrap())?;
+    let output_path = ctx.output_path(&page_meta.path, &content_path)?;
     let output_file = File::create(output_path)?;
 
     #[cfg(feature = "markdown")]
