@@ -85,7 +85,7 @@ pub(crate) fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environm
     Ok(template_env)
 }
 
-pub(crate) fn environment<'a>() -> minijinja::Environment<'a> {
+fn environment<'a>() -> minijinja::Environment<'a> {
     let mut env = minijinja::Environment::new();
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     env.add_function("load_data", functions::load_data);
