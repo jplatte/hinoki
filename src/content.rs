@@ -258,7 +258,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         mut frontmatter: Frontmatter,
     ) -> anyhow::Result<PageMetadata> {
         #[derive(Serialize)]
-        struct FrontmatterRenderContext<'a> {
+        struct MetadataContext<'a> {
             slug: &'a str,
             // TODO: More fields
         }
@@ -274,18 +274,18 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             slug
         });
 
-        let frontmatter_ctx = FrontmatterRenderContext { slug: &slug };
+        let metadata_ctx = MetadataContext { slug: &slug };
 
         let path = match frontmatter.path {
             // If path comes from frontmatter or defaults, apply templating
-            Some(path) => self.metadata_env.get_template(&path)?.render(&frontmatter_ctx)?.into(),
+            Some(path) => self.metadata_env.get_template(&path)?.render(&metadata_ctx)?.into(),
             // Otherwise, use the path relative to content
             None => page_path,
         };
 
         let title = frontmatter
             .title
-            .map(|title| self.metadata_env.get_template(&title)?.render(&frontmatter_ctx))
+            .map(|title| self.metadata_env.get_template(&title)?.render(&metadata_ctx))
             .transpose()?;
 
         #[cfg(not(feature = "syntax-highlighting"))]
