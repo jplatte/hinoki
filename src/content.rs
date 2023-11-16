@@ -110,7 +110,7 @@ pub(crate) fn dump(config: Config) -> ExitCode {
 }
 
 fn anyhow_exit(error: anyhow::Error) -> ExitCode {
-    error!("{error}");
+    error!("{error:#}");
     ExitCode::FAILURE
 }
 
