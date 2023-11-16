@@ -12,18 +12,11 @@ use super::ProcessContent;
 #[derive(Debug)]
 pub(crate) struct DirectoryMetadata {
     pub subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
-    pub pages: Arc<OnceLock<Vec<PageMetadata>>>,
-    pub assets: Vec<AssetMetadata>,
-}
-
-#[derive(Debug)]
-pub(crate) enum FileMetadata {
-    Page(PageMetadata),
-    Asset(AssetMetadata),
+    pub files: Arc<OnceLock<Vec<FileMetadata>>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub(crate) struct PageMetadata {
+pub(crate) struct FileMetadata {
     pub draft: bool,
     pub slug: String,
     pub path: Utf8PathBuf,
@@ -33,20 +26,9 @@ pub(crate) struct PageMetadata {
     // further data from frontmatter that should be printed in dump-metadata
     // but not passed to the template as `page.*`
     #[serde(skip)]
-    pub template: Utf8PathBuf,
+    pub template: Option<Utf8PathBuf>,
     #[serde(skip)]
     pub process_content: Option<ProcessContent>,
     #[serde(skip)]
     pub syntax_highlight_theme: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct AssetMetadata {
-    pub path: Utf8PathBuf,
-}
-
-impl AssetMetadata {
-    pub fn new(path: Utf8PathBuf) -> Self {
-        Self { path }
-    }
 }

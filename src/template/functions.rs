@@ -21,7 +21,7 @@ use serde::{
 use tracing::warn;
 
 use crate::{
-    content::{DirectoryMetadata, PageMetadata},
+    content::{DirectoryMetadata, FileMetadata},
     util::OrderBiMap,
 };
 
@@ -40,31 +40,31 @@ impl Ordering {
 }
 
 #[derive(Debug)]
-pub(crate) struct GetPage {
-    current_dir_pages: Arc<OnceLock<Vec<PageMetadata>>>,
+pub(crate) struct GetFile {
+    current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
     current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
-    current_page_idx: usize,
+    current_file_idx: usize,
 
-    page_indices_by_date: OnceLock<OrderBiMap>,
+    file_indices_by_date: OnceLock<OrderBiMap>,
 }
 
-impl GetPage {
+impl GetFile {
     pub(crate) fn new(
-        current_dir_pages: Arc<OnceLock<Vec<PageMetadata>>>,
+        current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
         current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
-        current_page_idx: usize,
+        current_file_idx: usize,
     ) -> Self {
         Self {
-            current_dir_pages,
+            current_dir_files,
             current_dir_subdirs,
-            current_page_idx,
-            page_indices_by_date: OnceLock::new(),
+            current_file_idx,
+            file_indices_by_date: OnceLock::new(),
         }
     }
 
-    fn current_dir_pages(&self) -> &[PageMetadata] {
+    fn current_dir_files(&self) -> &[FileMetadata] {
         loop {
-            if let Some(initialized) = self.current_dir_pages.get() {
+            if let Some(initialized) = self.current_dir_files.get() {
                 return initialized;
             }
 
@@ -75,28 +75,28 @@ impl GetPage {
         }
     }
 
-    fn get_or_init_page_indices_by(
+    fn get_or_init_file_indices_by(
         &self,
         ordering: Ordering,
-        current_dir_pages: &[PageMetadata],
+        current_dir_files: &[FileMetadata],
     ) -> &OrderBiMap {
         match ordering {
             Ordering::Date => self
-                .page_indices_by_date
-                .get_or_init(|| OrderBiMap::new(current_dir_pages, |page| page.date)),
+                .file_indices_by_date
+                .get_or_init(|| OrderBiMap::new(current_dir_files, |file| file.date)),
         }
     }
 }
 
-impl fmt::Display for GetPage {
+impl fmt::Display for GetFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "get_page")
+        write!(f, "get_file")
     }
 }
 
-impl Object for GetPage {
+impl Object for GetFile {
     fn call(&self, _state: &minijinja::State, args: &[Value]) -> Result<Value, minijinja::Error> {
-        // TODO: Add `Option<String>` non-kw parameter to look up specific page
+        // TODO: Add `Option<String>` non-kw parameter to look up specific file
         //       by relative path
         let (kwargs,): (Kwargs,) = from_args(args)?;
         let prev_by: Option<String> = kwargs.get("prev_by")?;
@@ -115,12 +115,12 @@ impl Object for GetPage {
             (Some(prev_by), None) => {
                 let prev_by = Ordering::from_string(&prev_by)?;
 
-                let current_dir_pages = self.current_dir_pages();
-                let order_bi_map = self.get_or_init_page_indices_by(prev_by, current_dir_pages);
-                let self_idx_ordered = order_bi_map.original_to_ordered[self.current_page_idx];
+                let current_dir_files = self.current_dir_files();
+                let order_bi_map = self.get_or_init_file_indices_by(prev_by, current_dir_files);
+                let self_idx_ordered = order_bi_map.original_to_ordered[self.current_file_idx];
                 if self_idx_ordered > 0 {
                     let prev_idx_original = order_bi_map.ordered_to_original[self_idx_ordered - 1];
-                    Ok(Value::from_serializable(&current_dir_pages[prev_idx_original]))
+                    Ok(Value::from_serializable(&current_dir_files[prev_idx_original]))
                 } else {
                     Ok(Value::UNDEFINED)
                 }
@@ -128,12 +128,12 @@ impl Object for GetPage {
             (None, Some(next_by)) => {
                 let next_by = Ordering::from_string(&next_by)?;
 
-                let current_dir_pages = self.current_dir_pages();
-                let order_bi_map = self.get_or_init_page_indices_by(next_by, current_dir_pages);
-                let self_idx_ordered = order_bi_map.original_to_ordered[self.current_page_idx];
+                let current_dir_files = self.current_dir_files();
+                let order_bi_map = self.get_or_init_file_indices_by(next_by, current_dir_files);
+                let self_idx_ordered = order_bi_map.original_to_ordered[self.current_file_idx];
                 match order_bi_map.ordered_to_original.get(self_idx_ordered + 1) {
                     Some(&next_idx_original) => {
-                        Ok(Value::from_serializable(&current_dir_pages[next_idx_original]))
+                        Ok(Value::from_serializable(&current_dir_files[next_idx_original]))
                     }
                     None => Ok(Value::UNDEFINED),
                 }
@@ -144,30 +144,30 @@ impl Object for GetPage {
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub(crate) struct GetPages {
+pub(crate) struct GetFiles {
     current_dir_subdirs: BTreeMap<String, DirectoryMetadata>,
 }
 
-impl GetPages {
+impl GetFiles {
     pub(crate) fn new(current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>) -> Arc<Self> {
-        // SAFETY: GetPages is a repr(transparent) struct over the map
+        // SAFETY: GetFiles is a repr(transparent) struct over the map
         unsafe { Arc::from_raw(Arc::into_raw(current_dir_subdirs) as _) }
     }
 }
 
-impl fmt::Display for GetPages {
+impl fmt::Display for GetFiles {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "get_pages")
+        write!(f, "get_files")
     }
 }
 
-impl Object for GetPages {
+impl Object for GetFiles {
     fn call(&self, _state: &minijinja::State, args: &[Value]) -> Result<Value, minijinja::Error> {
         // TODO: split at slash and do nested lookup?
 
         let (subdir_name,): (&str,) = from_args(args)?;
         match self.current_dir_subdirs.get(subdir_name) {
-            Some(subdir_meta) => Ok(Value::from_serializable(&subdir_meta.pages.get().unwrap())),
+            Some(subdir_meta) => Ok(Value::from_serializable(&subdir_meta.files.get().unwrap())),
             None => Err(minijinja::Error::new(
                 minijinja::ErrorKind::InvalidOperation,
                 format!("no subdirectory `{subdir_name}`"),

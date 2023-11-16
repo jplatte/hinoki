@@ -1,4 +1,4 @@
-use std::io::{BufRead, ErrorKind};
+use std::io::{BufRead, ErrorKind, Seek};
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
@@ -78,24 +78,30 @@ pub(crate) enum ProcessContent {
 /// delimiter is found, parses all the lines between that one and the next one
 /// found. If successful, the input will be advanced such that the remaining
 /// content after the frontmatter can be processed from it.
-pub(crate) fn parse_frontmatter(input: impl BufRead) -> Result<Option<Frontmatter>, anyhow::Error> {
-    let mut buf = String::new();
-
+pub(crate) fn parse_frontmatter(input: impl BufRead + Seek) -> Result<Frontmatter, anyhow::Error> {
     // Read at most 256 bytes at once. Avoids loading lots of irrelevant data
     // into memory for binary files.
     let mut limited = input.take(256);
-    if let Err(e) = limited.read_line(&mut buf) {
-        let result = match e.kind() {
-            // Invalid UTF-8
-            ErrorKind::InvalidData => Ok(None),
-            _ => Err(e.into()),
-        };
 
-        return result;
+    macro_rules! bail_default {
+        () => {{
+            let mut input = limited.into_inner();
+            input.rewind()?;
+            return Ok(Frontmatter::default());
+        }};
+    }
+
+    let mut buf = String::new();
+    if let Err(e) = limited.read_line(&mut buf) {
+        match e.kind() {
+            // Invalid UTF-8
+            ErrorKind::InvalidData => bail_default!(),
+            _ => return Err(e.into()),
+        }
     }
 
     if buf.trim_end() != "+++" {
-        return Ok(None);
+        bail_default!();
     }
 
     // If frontmatter delimiter was found, don't limit reading anymore.

@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    io::{BufReader, Read},
+    io::{self, BufReader, BufWriter, Read, Write},
     process::ExitCode,
     sync::{mpsc, Arc, OnceLock},
 };
@@ -9,18 +9,17 @@ use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
-use itertools::{Either, Itertools};
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{error, instrument, trace, warn};
 use walkdir::WalkDir;
 
+use self::frontmatter::parse_frontmatter;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
-use self::{frontmatter::parse_frontmatter, metadata::FileMetadata};
 use crate::{
     build::BuildDirManager,
     cli::BuildArgs,
@@ -35,7 +34,7 @@ mod syntax_highlighting;
 
 pub(crate) use self::{
     frontmatter::{Frontmatter, ProcessContent},
-    metadata::{AssetMetadata, DirectoryMetadata, PageMetadata},
+    metadata::{DirectoryMetadata, FileMetadata},
 };
 
 pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
@@ -187,15 +186,15 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                 .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
         );
 
-        let pages = Arc::new(OnceLock::new());
+        let files_oncelock = Arc::new(OnceLock::new());
         let mut idx = 0;
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
             let functions = context! {
-                get_page => minijinja::Value::from_object(
-                    functions::GetPage::new(pages.clone(), subdirs.clone(), idx),
+                get_file => minijinja::Value::from_object(
+                    functions::GetFile::new(files_oncelock.clone(), subdirs.clone(), idx),
                 ),
-                get_pages => minijinja::Value::from(
-                    functions::GetPages::new(subdirs.clone()),
+                get_files => minijinja::Value::from(
+                    functions::GetFiles::new(subdirs.clone()),
                 ),
             };
 
@@ -210,13 +209,8 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             anyhow::Ok(v)
         })?;
 
-        let (pages_vec, assets) = files.into_iter().partition_map(|file_meta| match file_meta {
-            FileMetadata::Page(meta) => Either::Left(meta),
-            FileMetadata::Asset(meta) => Either::Right(meta),
-        });
-
-        pages.set(pages_vec).unwrap(); // only set from here
-        Ok(DirectoryMetadata { subdirs, pages, assets })
+        files_oncelock.set(files).unwrap(); // only set from here
+        Ok(DirectoryMetadata { subdirs, files: files_oncelock })
     }
 
     #[instrument(skip_all, fields(?content_path))]
@@ -226,51 +220,43 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         functions: minijinja::Value,
         write_output: WriteOutput,
     ) -> anyhow::Result<Option<FileMetadata>> {
-        let page_path =
+        let file_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
 
         let mut input_file = BufReader::new(File::open(&content_path)?);
 
-        Ok(Some(match parse_frontmatter(&mut input_file)? {
-            Some(frontmatter) => {
-                let page_meta = self.page_metadata(page_path, frontmatter)?;
-                if !self.ctx.args.include_drafts && page_meta.draft {
-                    return Ok(None);
-                }
+        let frontmatter = parse_frontmatter(&mut input_file)?;
+        let file_meta = self.file_metadata(file_path.clone(), frontmatter)?;
+        if !self.ctx.args.include_drafts && file_meta.draft {
+            return Ok(None);
+        }
 
-                if let WriteOutput::Yes = write_output {
-                    self.render_page(page_meta.clone(), functions, input_file, content_path)?;
-                }
+        if let WriteOutput::Yes = write_output {
+            self.render_file(file_meta.clone(), functions, input_file, content_path)?;
+        }
 
-                FileMetadata::Page(page_meta)
-            }
-            None => {
-                drop(input_file);
-
-                FileMetadata::Asset(self.process_asset(write_output, page_path, &content_path)?)
-            }
-        }))
+        Ok(Some(file_meta))
     }
 
-    fn page_metadata(
+    fn file_metadata(
         &self,
-        page_path: Utf8PathBuf,
+        file_path: Utf8PathBuf,
         mut frontmatter: Frontmatter,
-    ) -> anyhow::Result<PageMetadata> {
+    ) -> anyhow::Result<FileMetadata> {
         #[derive(Serialize)]
         struct MetadataContext<'a> {
             slug: &'a str,
             // TODO: More fields
         }
 
-        for defaults in self.ctx.defaults.for_path(&page_path).rev() {
+        for defaults in self.ctx.defaults.for_path(&file_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
 
         let slug = frontmatter.slug.unwrap_or_else(|| {
-            trace!("Generating slug for `{page_path}`");
-            let slug = page_path.file_stem().expect("path must have a file name").to_owned();
-            trace!("Slug for `{page_path}` is `{slug}`");
+            trace!("Generating slug for `{file_path}`");
+            let slug = file_path.file_stem().expect("path must have a file name").to_owned();
+            trace!("Slug for `{file_path}` is `{slug}`");
             slug
         });
 
@@ -280,7 +266,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             // If path comes from frontmatter or defaults, apply templating
             Some(path) => self.metadata_env.get_template(&path)?.render(&metadata_ctx)?.into(),
             // Otherwise, use the path relative to content
-            None => page_path,
+            None => file_path,
         };
 
         let title = frontmatter
@@ -296,28 +282,28 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             );
         }
 
-        Ok(PageMetadata {
+        Ok(FileMetadata {
             draft: frontmatter.draft.unwrap_or(false),
             slug,
             path,
             title,
             // TODO: allow extracting from file name?
             date: frontmatter.date,
-            template: frontmatter.template.context("no template specified")?,
+            template: frontmatter.template,
             process_content: frontmatter.process_content,
             syntax_highlight_theme: frontmatter.syntax_highlight_theme,
         })
     }
 
-    fn render_page(
+    fn render_file(
         &self,
-        page_meta: PageMetadata,
+        file_meta: FileMetadata,
         functions: minijinja::Value,
         input_file: BufReader<File>,
         content_path: Utf8PathBuf,
     ) -> anyhow::Result<()> {
         #[cfg(not(feature = "markdown"))]
-        if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
+        if let Some(ProcessContent::MarkdownToHtml) = file_meta.process_content {
             anyhow::bail!(
                 "hinoki was compiled without support for markdown.\
                  Please recompile with the 'markdown' feature enabled."
@@ -331,28 +317,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render_page(page_meta, input_file, functions, ctx, content_path) {
+            if let Err(e) = render(file_meta, input_file, functions, ctx, content_path) {
                 error_tx.send(e).unwrap();
             }
         });
 
         Ok(())
-    }
-
-    fn process_asset(
-        &self,
-        write_output: WriteOutput,
-        page_path: Utf8PathBuf,
-        content_path: &Utf8Path,
-    ) -> anyhow::Result<AssetMetadata> {
-        if let WriteOutput::Yes = write_output {
-            let output_path = self.ctx.output_path(&page_path, content_path)?;
-
-            debug!("copying file without frontmatter verbatim");
-            fs::copy(content_path, output_path)?;
-        }
-
-        Ok(AssetMetadata::new(page_path))
     }
 }
 
@@ -410,30 +380,41 @@ impl<'a> ContentProcessorContext<'a> {
 
     fn output_path(
         &self,
-        page_path: &Utf8Path,
+        file_path: &Utf8Path,
         content_path: &Utf8Path,
     ) -> anyhow::Result<Utf8PathBuf> {
-        self.build_dir_mgr.output_path(page_path, content_path)
+        self.build_dir_mgr.output_path(file_path, content_path)
     }
 }
 
-fn render_page(
-    page_meta: PageMetadata,
+fn render(
+    file_meta: FileMetadata,
     mut input_file: BufReader<File>,
     functions: minijinja::Value,
     ctx: &ContentProcessorContext<'_>,
     content_path: Utf8PathBuf,
 ) -> anyhow::Result<()> {
-    let template = ctx.template_env.get_template(page_meta.template.as_str())?;
+    let template = file_meta
+        .template
+        .as_ref()
+        .map(|tpl| ctx.template_env.get_template(tpl.as_str()))
+        .transpose()?;
+
+    let output_path = ctx.output_path(&file_meta.path, &content_path)?;
+    let mut output_file = BufWriter::new(File::create(output_path)?);
+
+    // Don't buffer file contents in memory if no templating or content
+    // processing is needed.
+    if template.is_none() && file_meta.process_content.is_none() {
+        io::copy(&mut input_file, &mut output_file)?;
+        return Ok(());
+    }
 
     let mut content = String::new();
     input_file.read_to_string(&mut content)?;
 
-    let output_path = ctx.output_path(&page_meta.path, &content_path)?;
-    let output_file = File::create(output_path)?;
-
     #[cfg(feature = "markdown")]
-    if let Some(ProcessContent::MarkdownToHtml) = page_meta.process_content {
+    if let Some(ProcessContent::MarkdownToHtml) = file_meta.process_content {
         use pulldown_cmark::{html::push_html, Options, Parser};
 
         let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
@@ -444,7 +425,7 @@ fn render_page(
 
         #[cfg(feature = "syntax-highlighting")]
         if let Some(theme) =
-            page_meta.syntax_highlight_theme.as_deref().or_else(|| syntax_highlighter.theme())
+            file_meta.syntax_highlight_theme.as_deref().or_else(|| syntax_highlighter.theme())
         {
             let with_highlighting = syntax_highlighter.highlight(parser, theme)?;
             push_html(&mut html_buf, with_highlighting);
@@ -455,13 +436,18 @@ fn render_page(
         content = html_buf;
     }
 
-    let ctx = context! {
-        content,
-        page => &page_meta,
-        ..functions
-    };
+    if let Some(template) = template {
+        let ctx = context! {
+            content,
+            page => &file_meta,
+            ..functions
+        };
 
-    template.render_to_write(ctx, output_file)?;
+        template.render_to_write(ctx, output_file)?;
+    } else {
+        output_file.write_all(content.as_bytes())?;
+    }
+
     Ok(())
 }
 
