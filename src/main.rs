@@ -32,7 +32,7 @@ fn main() -> ExitCode {
     let config = match read_config() {
         Ok(c) => c,
         Err(e) => {
-            error!("{e}");
+            error!("{e:#}");
             return ExitCode::FAILURE;
         }
     };
