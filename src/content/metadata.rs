@@ -56,5 +56,61 @@ pub(super) fn metadata_env() -> minijinja::Environment<'static> {
     env.add_filter("sort", minijinja::filters::sort);
     env.add_filter("trim", minijinja::filters::trim);
 
+    // Own filters
+    env.add_filter("date_prefix", date_prefix);
+    env.add_filter("strip_date_prefix", strip_date_prefix);
+
     env
+}
+
+fn date_prefix(value: String) -> minijinja::Value {
+    match split_date_prefix(&value) {
+        Some((date, _rest)) => date.into(),
+        None => minijinja::Value::UNDEFINED,
+    }
+}
+
+fn strip_date_prefix(value: String) -> String {
+    match split_date_prefix(&value) {
+        Some((_date, rest)) => rest.to_owned(),
+        None => value,
+    }
+}
+
+fn split_date_prefix(value: &str) -> Option<(&str, &str)> {
+    let mut idx = 0;
+    let mut digit_seen = false;
+    let mut dashes_seen = 0;
+
+    while idx < value.len() {
+        let byte = value.as_bytes()[idx];
+
+        if byte.is_ascii_digit() {
+            digit_seen = true;
+        } else if byte == b'-' && digit_seen {
+            dashes_seen += 1;
+            if dashes_seen == 3 {
+                return Some((&value[..idx], &value[idx + 1..]));
+            }
+            digit_seen = false;
+        } else {
+            break;
+        }
+
+        idx += 1;
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_date_prefix;
+
+    #[test]
+    fn strip_date_prefixes() {
+        assert_eq!(strip_date_prefix("1111-11-11-11".to_owned()), "11".to_owned());
+        assert_eq!(strip_date_prefix("1-1-1-test".to_owned()), "test".to_owned());
+        assert_eq!(strip_date_prefix("2023-01-01".to_owned()), "2023-01-01".to_owned());
+    }
 }
