@@ -17,9 +17,9 @@ use serde::Serialize;
 use tracing::{error, instrument, trace, warn};
 use walkdir::WalkDir;
 
-use self::frontmatter::parse_frontmatter;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
+use self::{frontmatter::parse_frontmatter, metadata::metadata_env};
 use crate::{
     build::BuildDirManager,
     cli::BuildArgs,
@@ -324,32 +324,6 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         Ok(())
     }
-}
-
-fn metadata_env() -> minijinja::Environment<'static> {
-    let mut env = minijinja::Environment::empty();
-
-    env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
-    env.set_syntax(minijinja::Syntax {
-        block_start: "{%".into(),
-        block_end: "%}".into(),
-        variable_start: "{".into(),
-        variable_end: "}".into(),
-        comment_start: "{#".into(),
-        comment_end: "#}".into(),
-    })
-    .expect("custom minijinja syntax is valid");
-
-    env.add_filter("default", minijinja::filters::default);
-    env.add_filter("first", minijinja::filters::first);
-    env.add_filter("join", minijinja::filters::join);
-    env.add_filter("last", minijinja::filters::last);
-    env.add_filter("replace", minijinja::filters::replace);
-    env.add_filter("reverse", minijinja::filters::reverse);
-    env.add_filter("sort", minijinja::filters::sort);
-    env.add_filter("trim", minijinja::filters::trim);
-
-    env
 }
 
 struct ContentProcessorContext<'a> {
