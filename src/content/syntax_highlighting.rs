@@ -16,7 +16,10 @@ pub(super) struct SyntaxHighlighter {
 
 impl SyntaxHighlighter {
     pub(super) fn new() -> anyhow::Result<SyntaxHighlighter> {
-        let syntaxset = SyntaxSet::load_defaults_newlines();
+        let mut syntaxset_builder = SyntaxSet::load_defaults_newlines().into_builder();
+        syntaxset_builder.add_from_folder("theme/sublime", true)?;
+        let syntaxset = syntaxset_builder.build();
+
         let themes = ThemeSet::load_from_folder("theme/sublime")
             .context("Loading syntax highlighting themes")?
             .themes;

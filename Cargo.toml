@@ -52,7 +52,7 @@ walkdir = "2.4.0"
 [dependencies.syntect]
 version = "5.1.0"
 default-features = false
-features = ["default-syntaxes", "html", "plist-load", "regex-fancy"]
+features = ["default-syntaxes", "html", "plist-load", "regex-fancy", "yaml-load"]
 optional = true
 
 # Optimize performance-sensitive dependencies when doing debug builds
