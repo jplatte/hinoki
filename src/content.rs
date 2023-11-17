@@ -8,13 +8,13 @@ use std::{
 use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
-use chrono::{DateTime, FixedOffset};
 use fs_err::{self as fs, File};
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
+use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 use walkdir::WalkDir;
 
@@ -266,14 +266,19 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         };
 
         let slug = self
-            .expand_metadata_tpl(frontmatter.slug, &metadata_ctx)?
+            .expand_metadata_tpl(frontmatter.slug, &metadata_ctx)
+            .context("expanding slug template")?
             .unwrap_or_else(|| source_file_stem.to_owned());
-        let title = self.expand_metadata_tpl(frontmatter.title, &metadata_ctx)?;
+        let title = self
+            .expand_metadata_tpl(frontmatter.title, &metadata_ctx)
+            .context("expanding title template")?;
         let date = self
-            .expand_metadata_tpl(frontmatter.date, &metadata_ctx)?
+            .expand_metadata_tpl(frontmatter.date, &metadata_ctx)
+            .context("expanding date template")?
             .filter(|s| !s.is_empty())
-            .map(|s| DateTime::parse_from_rfc3339(&s))
-            .transpose()?;
+            .map(|s| Date::parse(&s, &Iso8601::DATE))
+            .transpose()
+            .context("parsing date")?;
 
         // Make slug, title and date available for path templates
         metadata_ctx.slug = Some(&slug);
@@ -452,7 +457,7 @@ struct MetadataContext<'a> {
     source_file_stem: &'a str,
     slug: Option<&'a str>,
     title: Option<&'a str>,
-    date: Option<&'a DateTime<FixedOffset>>,
+    date: Option<&'a Date>,
 }
 
 #[derive(Clone, Copy)]

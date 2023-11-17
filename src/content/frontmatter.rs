@@ -77,7 +77,7 @@ pub(crate) enum ProcessContent {
 /// delimiter is found, parses all the lines between that one and the next one
 /// found. If successful, the input will be advanced such that the remaining
 /// content after the frontmatter can be processed from it.
-pub(crate) fn parse_frontmatter(input: impl BufRead + Seek) -> Result<Frontmatter, anyhow::Error> {
+pub(crate) fn parse_frontmatter(input: impl BufRead + Seek) -> anyhow::Result<Frontmatter> {
     // Read at most 256 bytes at once. Avoids loading lots of irrelevant data
     // into memory for binary files.
     let mut limited = input.take(256);
