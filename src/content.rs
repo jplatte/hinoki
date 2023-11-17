@@ -2,7 +2,10 @@ use std::{
     collections::BTreeMap,
     io::{self, BufReader, BufWriter, Read, Write},
     process::ExitCode,
-    sync::{mpsc, Arc, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
+    },
 };
 
 use anyhow::Context as _;
@@ -43,12 +46,12 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
         args: BuildArgs,
         defaults: Defaults,
         build_dir_mgr: &BuildDirManager,
-        error_tx: mpsc::Sender<anyhow::Error>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&alloc)?;
         let ctx = ContentProcessorContext::new(args, defaults, template_env, build_dir_mgr);
-        rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).run())
+        rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
+        Ok(ctx.did_error.load(Ordering::Relaxed))
     }
 
     fn copy_static_files(build_dir_mgr: &BuildDirManager) -> anyhow::Result<()> {
@@ -72,26 +75,29 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
         })
     }
 
-    let (error_tx, error_rx) = mpsc::channel();
     let build_dir_mgr = BuildDirManager::new(config.output_dir);
 
     let (r1, r2) = rayon::join(
-        || build_inner(args, config.defaults, &build_dir_mgr, error_tx),
+        || build_inner(args, config.defaults, &build_dir_mgr),
         || copy_static_files(&build_dir_mgr),
     );
 
-    let errors = r1.err().into_iter().chain(r2.err()).chain(error_rx.iter());
-
-    let mut exit = ExitCode::SUCCESS;
-    for e in errors {
-        exit = anyhow_exit(e);
+    match (r1, r2) {
+        (Err(e1), Err(e2)) => {
+            error!("{e1:#}");
+            error!("{e2:#}");
+            ExitCode::FAILURE
+        }
+        (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
+            error!("{e:#}");
+            ExitCode::FAILURE
+        }
+        (Ok(true), Ok(())) => ExitCode::FAILURE,
+        (Ok(false), Ok(())) => ExitCode::SUCCESS,
     }
-
-    exit
 }
 
 pub(crate) fn dump(config: Config) -> ExitCode {
-    let (error_tx, error_rx) = mpsc::channel();
     let build_dir_mgr = BuildDirManager::new("".into());
     let ctx = ContentProcessorContext::new(
         BuildArgs { include_drafts: true },
@@ -100,18 +106,16 @@ pub(crate) fn dump(config: Config) -> ExitCode {
         &build_dir_mgr,
     );
 
-    let res = rayon::scope(|scope| ContentProcessor::new(scope, error_tx, &ctx).dump());
-    assert!(error_rx.recv().is_err());
+    let res = rayon::scope(|scope| ContentProcessor::new(scope, &ctx).dump());
+    assert!(!ctx.did_error.load(Ordering::Relaxed));
 
     match res {
         Ok(_) => ExitCode::SUCCESS,
-        Err(e) => anyhow_exit(e),
+        Err(e) => {
+            error!("{e:#}");
+            ExitCode::FAILURE
+        }
     }
-}
-
-fn anyhow_exit(error: anyhow::Error) -> ExitCode {
-    error!("{error:#}");
-    ExitCode::FAILURE
 }
 
 struct ContentProcessor<'c, 's, 'sc> {
@@ -121,18 +125,13 @@ struct ContentProcessor<'c, 's, 'sc> {
     // branching?
     metadata_env: minijinja::Environment<'static>,
     render_scope: &'s rayon::Scope<'sc>,
-    error_tx: mpsc::Sender<anyhow::Error>,
     ctx: &'c ContentProcessorContext<'c>,
 }
 
 impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
-    fn new(
-        render_scope: &'s rayon::Scope<'sc>,
-        error_tx: mpsc::Sender<anyhow::Error>,
-        ctx: &'c ContentProcessorContext<'c>,
-    ) -> Self {
+    fn new(render_scope: &'s rayon::Scope<'sc>, ctx: &'c ContentProcessorContext<'c>) -> Self {
         let metadata_env = metadata_env();
-        Self { metadata_env, render_scope, error_tx, ctx }
+        Self { metadata_env, render_scope, ctx }
     }
 
     fn run(&self) -> anyhow::Result<()> {
@@ -338,13 +337,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         let ctx = self.ctx;
         let span = tracing::Span::current();
-        let error_tx = self.error_tx.clone();
 
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
             if let Err(e) = render(file_meta, input_file, functions, ctx, content_path) {
-                error_tx.send(e).unwrap();
+                error!("{e:#}");
+                ctx.did_error.store(true, Ordering::Relaxed);
             }
         });
 
@@ -359,6 +358,7 @@ struct ContentProcessorContext<'a> {
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
     build_dir_mgr: &'a BuildDirManager,
+    did_error: AtomicBool,
 }
 
 impl<'a> ContentProcessorContext<'a> {
@@ -375,6 +375,7 @@ impl<'a> ContentProcessorContext<'a> {
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
             build_dir_mgr,
+            did_error: AtomicBool::new(false),
         }
     }
 
