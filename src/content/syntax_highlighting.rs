@@ -51,7 +51,9 @@ impl SyntaxHighlighter {
         let mut current_code_block_contents = String::new();
 
         Ok(events.filter_map(move |event| match event {
-            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(language))) => {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(language)))
+                if !language.is_empty() =>
+            {
                 current_code_block_language = Some(language);
                 None
             }
