@@ -2,7 +2,6 @@ use std::io::{BufRead, ErrorKind, Seek};
 
 use anyhow::Context as _;
 use camino::Utf8PathBuf;
-use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 #[derive(Default, Deserialize)]
@@ -30,7 +29,7 @@ pub(crate) struct Frontmatter {
     pub title: Option<String>,
 
     /// Page date.
-    pub date: Option<DateTime<Utc>>,
+    pub date: Option<String>,
 
     /// Custom slug for this page, to replace the file basename.
     pub slug: Option<String>,
@@ -57,7 +56,7 @@ impl Frontmatter {
             self.title = defaults.title.clone();
         }
         if self.date.is_none() {
-            self.date = defaults.date;
+            self.date = defaults.date.clone();
         }
         if self.slug.is_none() {
             self.slug = defaults.slug.clone();

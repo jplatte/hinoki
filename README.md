@@ -91,7 +91,7 @@ process_content = "markdown_to_html"
 # default, i.e. there is no need to specify this field anywhere.
 syntax_highlight_theme = "visual-studio-dark"
 # Custom rendered path for this page.
-path = "blog/{slug}.html"
+path = "/blog/{slug}.html"
 # Page title.
 title = "Foo"
 # Page date.

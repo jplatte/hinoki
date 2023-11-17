@@ -4,7 +4,8 @@ use std::{
 };
 
 use camino::Utf8PathBuf;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset};
+use minijinja::UndefinedBehavior;
 use serde::Serialize;
 
 use super::ProcessContent;
@@ -21,7 +22,7 @@ pub(crate) struct FileMetadata {
     pub slug: String,
     pub path: Utf8PathBuf,
     pub title: Option<String>,
-    pub date: Option<DateTime<Utc>>,
+    pub date: Option<DateTime<FixedOffset>>,
 
     // further data from frontmatter that should be printed in dump-metadata
     // but not passed to the template as `page.*`
@@ -36,6 +37,7 @@ pub(crate) struct FileMetadata {
 pub(super) fn metadata_env() -> minijinja::Environment<'static> {
     let mut env = minijinja::Environment::empty();
 
+    env.set_undefined_behavior(UndefinedBehavior::Strict);
     env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
     env.set_syntax(minijinja::Syntax {
         block_start: "{%".into(),

@@ -8,13 +8,14 @@ use std::{
 use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::{Utf8Path, Utf8PathBuf};
+use chrono::{DateTime, FixedOffset};
 use fs_err::{self as fs, File};
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelBridge as _, ParallelIterator as _};
 use serde::Serialize;
-use tracing::{error, instrument, trace, warn};
+use tracing::{error, instrument, warn};
 use walkdir::WalkDir;
 
 #[cfg(feature = "syntax-highlighting")]
@@ -220,13 +221,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         functions: minijinja::Value,
         write_output: WriteOutput,
     ) -> anyhow::Result<Option<FileMetadata>> {
-        let file_path =
+        let source_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
 
         let mut input_file = BufReader::new(File::open(&content_path)?);
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
-        let file_meta = self.file_metadata(file_path.clone(), frontmatter)?;
+        let file_meta = self.file_metadata(source_path.clone(), frontmatter)?;
         if !self.ctx.args.include_drafts && file_meta.draft {
             return Ok(None);
         }
@@ -240,39 +241,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
     fn file_metadata(
         &self,
-        file_path: Utf8PathBuf,
+        source_path: Utf8PathBuf,
         mut frontmatter: Frontmatter,
     ) -> anyhow::Result<FileMetadata> {
-        #[derive(Serialize)]
-        struct MetadataContext<'a> {
-            slug: &'a str,
-            // TODO: More fields
-        }
-
-        for defaults in self.ctx.defaults.for_path(&file_path).rev() {
+        for defaults in self.ctx.defaults.for_path(&source_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
-
-        let slug = frontmatter.slug.unwrap_or_else(|| {
-            trace!("Generating slug for `{file_path}`");
-            let slug = file_path.file_stem().expect("path must have a file name").to_owned();
-            trace!("Slug for `{file_path}` is `{slug}`");
-            slug
-        });
-
-        let metadata_ctx = MetadataContext { slug: &slug };
-
-        let path = match frontmatter.path {
-            // If path comes from frontmatter or defaults, apply templating
-            Some(path) => self.metadata_env.get_template(&path)?.render(&metadata_ctx)?.into(),
-            // Otherwise, use the path relative to content
-            None => file_path,
-        };
-
-        let title = frontmatter
-            .title
-            .map(|title| self.metadata_env.get_template(&title)?.render(&metadata_ctx))
-            .transpose()?;
 
         #[cfg(not(feature = "syntax-highlighting"))]
         if frontmatter.syntax_highlight_theme.is_some() {
@@ -282,17 +256,64 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             );
         }
 
+        let source_file_stem = source_path.file_stem().expect("path must have a file name");
+        let mut metadata_ctx = MetadataContext {
+            source_path: &source_path,
+            source_file_stem,
+            slug: None,
+            title: None,
+            date: None,
+        };
+
+        let slug = self
+            .expand_metadata_tpl(frontmatter.slug, &metadata_ctx)?
+            .unwrap_or_else(|| source_file_stem.to_owned());
+        let title = self.expand_metadata_tpl(frontmatter.title, &metadata_ctx)?;
+        let date = self
+            .expand_metadata_tpl(frontmatter.date, &metadata_ctx)?
+            .filter(|s| !s.is_empty())
+            .map(|s| DateTime::parse_from_rfc3339(&s))
+            .transpose()?;
+
+        // Make slug, title and date available for path templates
+        metadata_ctx.slug = Some(&slug);
+        metadata_ctx.title = title.as_deref();
+        metadata_ctx.date = date.as_ref();
+
+        let path = match self.expand_metadata_tpl(frontmatter.path, &metadata_ctx)? {
+            Some(path) => path
+                .strip_prefix('/')
+                .context("paths in frontmatter and defaults must begin with '/'")?
+                .into(),
+            None => source_path.clone(),
+        };
+
         Ok(FileMetadata {
             draft: frontmatter.draft.unwrap_or(false),
             slug,
             path,
             title,
-            // TODO: allow extracting from file name?
-            date: frontmatter.date,
+            date,
             template: frontmatter.template,
             process_content: frontmatter.process_content,
             syntax_highlight_theme: frontmatter.syntax_highlight_theme,
         })
+    }
+
+    fn expand_metadata_tpl(
+        &self,
+        maybe_value: Option<String>,
+        metadata_ctx: &MetadataContext<'_>,
+    ) -> anyhow::Result<Option<String>> {
+        maybe_value
+            .map(|value| {
+                if value.contains('{') {
+                    Ok(self.metadata_env.get_template(&value)?.render(metadata_ctx)?)
+                } else {
+                    Ok(value)
+                }
+            })
+            .transpose()
     }
 
     fn render_file(
@@ -423,6 +444,15 @@ fn render(
     }
 
     Ok(())
+}
+
+#[derive(Serialize)]
+struct MetadataContext<'a> {
+    source_path: &'a Utf8Path,
+    source_file_stem: &'a str,
+    slug: Option<&'a str>,
+    title: Option<&'a str>,
+    date: Option<&'a DateTime<FixedOffset>>,
 }
 
 #[derive(Clone, Copy)]
