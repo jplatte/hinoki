@@ -56,13 +56,15 @@ After installing it, you can run `hinoki build` in such a directory to populate 
 process_content = "markdown_to_html"
 
 [defaults."blog/*"]
+template = "blog_article.html"
 # It is also possible to use basic templating for paths and titles.
 # This uses a MiniJinja engine with `{{` and `}}` shortened to `{` and `}`.
-#
-# For now, only the `slug` variable is passed, but something like the below
-# will be supported in the future.
-path = "blog/{date.year}/{date.month}/{date.day}/{slug}/"
-template = "blog_article.html"
+date = "{source_file_stem|date_prefix}"
+slug = "{source_file_stem|strip_date_prefix}"
+# The path template will be expanded last (regardless of its position in the
+# frontmatter / defaults) and can use `slug`, `date` and `title`, possibly more
+# other fields in the future.
+path = "/{date|dateformat(format='[year]/[month]')}/{slug}/index.html"
 ```
 
 ### Frontmatter
