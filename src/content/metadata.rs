@@ -58,6 +58,15 @@ pub(super) fn metadata_env() -> minijinja::Environment<'static> {
     env.add_filter("sort", minijinja::filters::sort);
     env.add_filter("trim", minijinja::filters::trim);
 
+    #[cfg(feature = "datetime")]
+    {
+        use minijinja_contrib::filters as contrib_filters;
+
+        env.add_filter("dateformat", contrib_filters::dateformat);
+        env.add_filter("datetimeformat", contrib_filters::datetimeformat);
+        env.add_filter("timeformat", contrib_filters::timeformat);
+    }
+
     // Own filters
     env.add_filter("date_prefix", date_prefix);
     env.add_filter("strip_date_prefix", strip_date_prefix);
