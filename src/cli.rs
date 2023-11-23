@@ -1,18 +1,18 @@
 #[derive(clap::Parser)]
-pub(crate) struct CliArgs {
+pub struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
 }
 
 #[derive(clap::Subcommand)]
-pub(crate) enum Command {
+pub enum Command {
     Build(BuildArgs),
     DumpMetadata,
     Serve,
 }
 
 #[derive(clap::Parser)]
-pub(crate) struct BuildArgs {
+pub struct BuildArgs {
     /// Include draft files in the output.
     #[arg(long = "drafts")]
     pub include_drafts: bool,

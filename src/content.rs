@@ -41,7 +41,7 @@ pub(crate) use self::{
     metadata::{DirectoryMetadata, FileMetadata},
 };
 
-pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
+pub fn build(args: BuildArgs, config: Config) -> ExitCode {
     fn build_inner(
         args: BuildArgs,
         defaults: Defaults,
@@ -97,7 +97,7 @@ pub(crate) fn build(args: BuildArgs, config: Config) -> ExitCode {
     }
 }
 
-pub(crate) fn dump(config: Config) -> ExitCode {
+pub fn dump(config: Config) -> ExitCode {
     let build_dir_mgr = BuildDirManager::new("".into());
     let ctx = ContentProcessorContext::new(
         BuildArgs { include_drafts: true },

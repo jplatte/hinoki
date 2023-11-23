@@ -7,7 +7,7 @@ use crate::content::{Frontmatter, ProcessContent};
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Config {
+pub struct Config {
     #[serde(default = "default_output_dir")]
     pub output_dir: Utf8PathBuf,
     #[serde(default)]
