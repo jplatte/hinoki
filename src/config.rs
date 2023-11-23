@@ -12,13 +12,15 @@ pub struct Config {
     pub output_dir: Utf8PathBuf,
     #[serde(default)]
     pub defaults: Defaults,
+    #[serde(default)]
+    pub extra: IndexMap<String, toml::Value>,
 }
 
 fn default_output_dir() -> Utf8PathBuf {
     "build".into()
 }
 
-pub(crate) struct Defaults {
+pub struct Defaults {
     values: Vec<Frontmatter>,
     globset: GlobSet,
 }

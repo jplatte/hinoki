@@ -27,7 +27,7 @@ use self::{frontmatter::parse_frontmatter, metadata::metadata_env};
 use crate::{
     build::BuildDirManager,
     cli::BuildArgs,
-    config::{Config, Defaults},
+    config::Config,
     template::{functions, load_templates},
 };
 
@@ -44,12 +44,12 @@ pub(crate) use self::{
 pub fn build(args: BuildArgs, config: Config) -> ExitCode {
     fn build_inner(
         args: BuildArgs,
-        defaults: Defaults,
+        config: Config,
         build_dir_mgr: &BuildDirManager,
     ) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&alloc)?;
-        let ctx = ContentProcessorContext::new(args, defaults, template_env, build_dir_mgr);
+        let ctx = ContentProcessorContext::new(args, config, template_env, build_dir_mgr);
         rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
         Ok(ctx.did_error.load(Ordering::Relaxed))
     }
@@ -75,10 +75,10 @@ pub fn build(args: BuildArgs, config: Config) -> ExitCode {
         })
     }
 
-    let build_dir_mgr = BuildDirManager::new(config.output_dir);
+    let build_dir_mgr = BuildDirManager::new(config.output_dir.clone());
 
     let (r1, r2) = rayon::join(
-        || build_inner(args, config.defaults, &build_dir_mgr),
+        || build_inner(args, config, &build_dir_mgr),
         || copy_static_files(&build_dir_mgr),
     );
 
@@ -101,7 +101,7 @@ pub fn dump(config: Config) -> ExitCode {
     let build_dir_mgr = BuildDirManager::new("".into());
     let ctx = ContentProcessorContext::new(
         BuildArgs { include_drafts: true },
-        config.defaults,
+        config,
         minijinja::Environment::empty(),
         &build_dir_mgr,
     );
@@ -243,7 +243,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         source_path: Utf8PathBuf,
         mut frontmatter: Frontmatter,
     ) -> anyhow::Result<FileMetadata> {
-        for defaults in self.ctx.defaults.for_path(&source_path).rev() {
+        for defaults in self.ctx.config.defaults.for_path(&source_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
 
@@ -353,7 +353,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
 struct ContentProcessorContext<'a> {
     args: BuildArgs,
-    defaults: Defaults,
+    config: Config,
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
@@ -364,13 +364,13 @@ struct ContentProcessorContext<'a> {
 impl<'a> ContentProcessorContext<'a> {
     fn new(
         args: BuildArgs,
-        defaults: Defaults,
+        config: Config,
         template_env: minijinja::Environment<'a>,
         build_dir_mgr: &'a BuildDirManager,
     ) -> Self {
         Self {
             args,
-            defaults,
+            config,
             template_env,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
@@ -438,9 +438,11 @@ fn render(
     }
 
     if let Some(template) = template {
+        let extra = &ctx.config.extra;
         let ctx = context! {
             content,
             page => &file_meta,
+            config => context! { extra },
             ..functions
         };
 
