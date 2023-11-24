@@ -55,11 +55,13 @@ default-features = false
 features = ["default-syntaxes", "html", "plist-load", "regex-fancy", "yaml-load"]
 optional = true
 
-# Optimize performance-sensitive dependencies when doing debug builds
+# Enable some optimizations for specific dependencies.
+# Otherwise, debug builds are unbearably slow.
 [profile.dev.package]
-aho-corasick = { opt-level = 2 }
-fancy-regex = { opt-level = 2 }
-memchr = { opt-level = 2 }
-regex = { opt-level = 2 }
+flate2 = { opt-level = 2 }
 regex-automata = { opt-level = 2 }
-regex-syntax = { opt-level = 2 }
+
+fancy-regex = { opt-level = 1 }
+regex-syntax = { opt-level = 1 }
+similar = { opt-level = 1 }
+syntect = { opt-level = 1 }
