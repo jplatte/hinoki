@@ -10,8 +10,8 @@ use crate::content::{FileConfig, ProcessContent};
 pub struct Config {
     #[serde(default = "default_output_dir")]
     pub output_dir: Utf8PathBuf,
-    #[serde(default)]
-    pub defaults: Defaults,
+    #[serde(default, rename = "files")]
+    pub file_config_defaults: Files,
     #[serde(default)]
     pub extra: IndexMap<String, toml::Value>,
 }
@@ -20,12 +20,12 @@ fn default_output_dir() -> Utf8PathBuf {
     "build".into()
 }
 
-pub struct Defaults {
+pub struct Files {
     values: Vec<FileConfig>,
     globset: GlobSet,
 }
 
-impl Defaults {
+impl Files {
     pub(crate) fn from_map(map: IndexMap<String, FileConfig>) -> Result<Self, globset::Error> {
         let mut builder = GlobSetBuilder::new();
         for path_glob in map.keys() {
@@ -44,7 +44,7 @@ impl Defaults {
     }
 }
 
-impl Default for Defaults {
+impl Default for Files {
     fn default() -> Self {
         Self::from_map(indexmap! {
             "*.md".to_owned() => FileConfig {
@@ -56,7 +56,7 @@ impl Default for Defaults {
     }
 }
 
-impl<'de> Deserialize<'de> for Defaults {
+impl<'de> Deserialize<'de> for Files {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -244,7 +244,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         source_path: Utf8PathBuf,
         mut frontmatter: FileConfig,
     ) -> anyhow::Result<FileMetadata> {
-        for defaults in self.ctx.config.defaults.for_path(&source_path).rev() {
+        for defaults in self.ctx.config.file_config_defaults.for_path(&source_path).rev() {
             frontmatter.apply_defaults(defaults);
         }
 
