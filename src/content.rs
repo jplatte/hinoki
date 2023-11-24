@@ -21,23 +21,24 @@ use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 use walkdir::WalkDir;
 
+use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
-use self::{frontmatter::parse_frontmatter, metadata::metadata_env};
 use crate::{
     build::BuildDirManager,
     cli::BuildArgs,
     config::Config,
+    frontmatter::parse_frontmatter,
     template::{functions, load_templates},
 };
 
-mod frontmatter;
+mod file_config;
 mod metadata;
 #[cfg(feature = "syntax-highlighting")]
 mod syntax_highlighting;
 
 pub(crate) use self::{
-    frontmatter::{Frontmatter, ProcessContent},
+    file_config::{FileConfig, ProcessContent},
     metadata::{DirectoryMetadata, FileMetadata},
 };
 
@@ -241,7 +242,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn file_metadata(
         &self,
         source_path: Utf8PathBuf,
-        mut frontmatter: Frontmatter,
+        mut frontmatter: FileConfig,
     ) -> anyhow::Result<FileMetadata> {
         for defaults in self.ctx.config.defaults.for_path(&source_path).rev() {
             frontmatter.apply_defaults(defaults);

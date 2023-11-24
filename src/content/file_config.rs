@@ -1,6 +1,3 @@
-use std::io::{BufRead, ErrorKind, Seek};
-
-use anyhow::Context as _;
 use camino::Utf8PathBuf;
 use indexmap::{map::Entry as IndexMapEntry, IndexMap};
 use serde::Deserialize;
@@ -8,7 +5,7 @@ use toml::map::Entry as TomlMapEntry;
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct Frontmatter {
+pub(crate) struct FileConfig {
     /// If set to `true`, this page will only be included in the output if
     /// building in dev mode.
     pub draft: Option<bool>,
@@ -41,8 +38,8 @@ pub(crate) struct Frontmatter {
     pub extra: IndexMap<String, toml::Value>,
 }
 
-impl Frontmatter {
-    pub(crate) fn apply_defaults(&mut self, defaults: &Frontmatter) {
+impl FileConfig {
+    pub(crate) fn apply_defaults(&mut self, defaults: &FileConfig) {
         if self.draft.is_none() {
             self.draft = defaults.draft;
         }
@@ -108,54 +105,3 @@ fn apply_inner_extra_defaults(target: &mut toml::Value, source: &toml::Value) {
 pub(crate) enum ProcessContent {
     MarkdownToHtml,
 }
-
-/// Looks for TOML frontmatter in the given reader and parses it if found.
-///
-/// If the input does not start with a frontmatter delimiter (line of `+++` with
-/// optional trailing whitespace), returns `Ok(None)`. If the frontmatter
-/// delimiter is found, parses all the lines between that one and the next one
-/// found. If successful, the input will be advanced such that the remaining
-/// content after the frontmatter can be processed from it.
-pub(crate) fn parse_frontmatter(input: impl BufRead + Seek) -> anyhow::Result<Frontmatter> {
-    // Read at most 256 bytes at once. Avoids loading lots of irrelevant data
-    // into memory for binary files.
-    let mut limited = input.take(256);
-
-    macro_rules! bail_default {
-        () => {{
-            let mut input = limited.into_inner();
-            input.rewind()?;
-            return Ok(Frontmatter::default());
-        }};
-    }
-
-    let mut buf = String::new();
-    if let Err(e) = limited.read_line(&mut buf) {
-        match e.kind() {
-            // Invalid UTF-8
-            ErrorKind::InvalidData => bail_default!(),
-            _ => return Err(e.into()),
-        }
-    }
-
-    if buf.trim_end() != "+++" {
-        bail_default!();
-    }
-
-    // If frontmatter delimiter was found, don't limit reading anymore.
-    let mut input = limited.into_inner();
-    buf.clear();
-    loop {
-        input.read_line(&mut buf)?;
-        if buf.lines().next_back().map_or(false, |l| l.trim_end() == "+++") {
-            let frontmatter_end_idx = buf.rfind("+++").expect("already found once");
-            buf.truncate(frontmatter_end_idx);
-            break;
-        }
-    }
-
-    toml::from_str(&buf).context("parsing frontmatter")
-}
-
-#[cfg(test)]
-mod tests {}

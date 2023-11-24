@@ -3,7 +3,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use indexmap::{indexmap, IndexMap};
 use serde::{de, Deserialize, Deserializer};
 
-use crate::content::{Frontmatter, ProcessContent};
+use crate::content::{FileConfig, ProcessContent};
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,12 +21,12 @@ fn default_output_dir() -> Utf8PathBuf {
 }
 
 pub struct Defaults {
-    values: Vec<Frontmatter>,
+    values: Vec<FileConfig>,
     globset: GlobSet,
 }
 
 impl Defaults {
-    pub(crate) fn from_map(map: IndexMap<String, Frontmatter>) -> Result<Self, globset::Error> {
+    pub(crate) fn from_map(map: IndexMap<String, FileConfig>) -> Result<Self, globset::Error> {
         let mut builder = GlobSetBuilder::new();
         for path_glob in map.keys() {
             builder.add(Glob::new(path_glob)?);
@@ -39,7 +39,7 @@ impl Defaults {
     pub(crate) fn for_path(
         &self,
         path: &Utf8Path,
-    ) -> impl Iterator<Item = &Frontmatter> + DoubleEndedIterator {
+    ) -> impl Iterator<Item = &FileConfig> + DoubleEndedIterator {
         self.globset.matches(path).into_iter().map(|idx| &self.values[idx])
     }
 }
@@ -47,7 +47,7 @@ impl Defaults {
 impl Default for Defaults {
     fn default() -> Self {
         Self::from_map(indexmap! {
-            "*.md".to_owned() => Frontmatter {
+            "*.md".to_owned() => FileConfig {
                 process_content: Some(ProcessContent::MarkdownToHtml),
                 ..Default::default()
             }
@@ -61,7 +61,7 @@ impl<'de> Deserialize<'de> for Defaults {
     where
         D: Deserializer<'de>,
     {
-        let map: IndexMap<String, Frontmatter> = IndexMap::deserialize(deserializer)?;
+        let map: IndexMap<String, FileConfig> = IndexMap::deserialize(deserializer)?;
         Self::from_map(map).map_err(de::Error::custom)
     }
 }
