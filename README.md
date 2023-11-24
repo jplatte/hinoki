@@ -45,17 +45,21 @@ After installing it, you can run `hinoki build` in such a directory to populate 
 
 ### Configuration
 
-```toml
-# The defaults table lets you set defaults for frontmatter fields for multiple
-# files at once (matched via glob syntax).
+Lots of things that you would configure globally with other static site generators are configured on a per-file basis with hinoki.
+To make this ergonomic, you can apply any file settings to many files at once using `config.toml`'s `files` section.
+There are also a few other things you can set in this file, as shown in the example below:
 
-# A lot of things that other static site generators do by default with no
-# opt-out are handled via defaults in hinoki, such as transforming markdown to
-# HTML.
-[defaults."*.md"]
+```toml
+# The output directory.
+#
+# Default value: `build`
+output_dir = "public"
+
+# Convert all .md files to HTML.
+[files."*.md"]
 process_content = "markdown_to_html"
 
-[defaults."blog/*"]
+[files."blog/*"]
 template = "blog_article.html"
 # It is also possible to use basic templating for paths and titles.
 # This uses a MiniJinja engine with `{{` and `}}` shortened to `{` and `}`.
@@ -65,13 +69,26 @@ slug = "{source_file_stem|strip_date_prefix}"
 # frontmatter / defaults) and can use `slug`, `date` and `title`, possibly more
 # other fields in the future.
 path = "/{date|dateformat(format='[year]/[month]')}/{slug}/index.html"
+
+# This section is for arbitrary user-defined data.
+#
+# Unknown fields outside of this table will cause errors, so typos get caught.
+[extra]
+# Available as `config.extra.author` in template code.
+author = "Erika Mustermann"
 ```
 
 ### Frontmatter
 
-If the first line of a file in `content` is found to be `+++`, the contents of the following line up until the second `+++` line are read as frontmatter.
-Just like the configuration file, this frontmatter is written in TOML.
-The following things can be configured in frontmatter (and thus config defaults):
+Since some configuration options make a lot more sense to be specified on individual files
+and one global config file doesn't scale very well,
+you can also place configuration in content files themselves.
+
+This is done using TOML "frontmatter", that is an embedded TOML document at the start of the file.
+It is introduced by starting the file with a line that contains exactly `+++`,
+followed by the TOML document which is then terminated with another `+++` line.
+
+Here is the full set of things you can currently configure through frontmatter (or `config.toml`):
 
 ```toml
 # Set this page to be a draft.
