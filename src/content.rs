@@ -298,6 +298,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             path,
             title,
             date,
+            extra: frontmatter.extra,
             template: frontmatter.template,
             process_content: frontmatter.process_content,
             syntax_highlight_theme: frontmatter.syntax_highlight_theme,

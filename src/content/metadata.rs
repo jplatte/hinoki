@@ -4,6 +4,7 @@ use std::{
 };
 
 use camino::Utf8PathBuf;
+use indexmap::IndexMap;
 use minijinja::UndefinedBehavior;
 use serde::Serialize;
 use time::Date;
@@ -23,6 +24,8 @@ pub(crate) struct FileMetadata {
     pub path: Utf8PathBuf,
     pub title: Option<String>,
     pub date: Option<Date>,
+    #[serde(default)]
+    pub extra: IndexMap<String, toml::Value>,
 
     // further data from frontmatter that should be printed in dump-metadata
     // but not passed to the template as `page.*`
