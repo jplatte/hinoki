@@ -21,6 +21,8 @@ use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 use walkdir::WalkDir;
 
+use self::markdown::markdown_to_html;
+#[cfg(feature = "markdown")]
 use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
@@ -33,6 +35,8 @@ use crate::{
 };
 
 mod file_config;
+#[cfg(feature = "markdown")]
+mod markdown;
 mod metadata;
 #[cfg(feature = "syntax-highlighting")]
 mod syntax_highlighting;
@@ -418,25 +422,8 @@ fn render(
 
     #[cfg(feature = "markdown")]
     if let Some(ProcessContent::MarkdownToHtml) = file_meta.process_content {
-        use pulldown_cmark::{html::push_html, Options, Parser};
-
-        let parser = Parser::new_ext(&content, Options::ENABLE_FOOTNOTES);
-        let mut html_buf = String::new();
-
-        #[cfg(feature = "syntax-highlighting")]
-        let syntax_highlighter = ctx.syntax_highlighter.get_or_try_init(SyntaxHighlighter::new)?;
-
-        #[cfg(feature = "syntax-highlighting")]
-        if let Some(theme) =
-            file_meta.syntax_highlight_theme.as_deref().or_else(|| syntax_highlighter.theme())
-        {
-            let with_highlighting = syntax_highlighter.highlight(parser, theme)?;
-            push_html(&mut html_buf, with_highlighting);
-        } else {
-            push_html(&mut html_buf, parser);
-        }
-
-        content = html_buf;
+        let syntax_highlight_theme = file_meta.syntax_highlight_theme.as_deref();
+        content = markdown_to_html(&content, &ctx.syntax_highlighter, syntax_highlight_theme)?;
     }
 
     if let Some(template) = template {
