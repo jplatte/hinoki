@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     sync::{Arc, OnceLock},
 };
@@ -77,17 +78,17 @@ pub(super) fn metadata_env() -> minijinja::Environment<'static> {
     env
 }
 
-fn date_prefix(value: String) -> minijinja::Value {
+fn date_prefix(value: Cow<'_, str>) -> minijinja::Value {
     match split_date_prefix(&value) {
         Some((date, _rest)) => date.into(),
         None => minijinja::Value::UNDEFINED,
     }
 }
 
-fn strip_date_prefix(value: String) -> String {
+fn strip_date_prefix(value: Cow<'_, str>) -> String {
     match split_date_prefix(&value) {
         Some((_date, rest)) => rest.to_owned(),
-        None => value,
+        None => value.into_owned(),
     }
 }
 
@@ -123,8 +124,8 @@ mod tests {
 
     #[test]
     fn strip_date_prefixes() {
-        assert_eq!(strip_date_prefix("1111-11-11-11".to_owned()), "11".to_owned());
-        assert_eq!(strip_date_prefix("1-1-1-test".to_owned()), "test".to_owned());
-        assert_eq!(strip_date_prefix("2023-01-01".to_owned()), "2023-01-01".to_owned());
+        assert_eq!(strip_date_prefix("1111-11-11-11".into()), "11");
+        assert_eq!(strip_date_prefix("1-1-1-test".into()), "test");
+        assert_eq!(strip_date_prefix("2023-01-01".into()), "2023-01-01");
     }
 }
