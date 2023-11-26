@@ -9,7 +9,7 @@ use syntect::{
 };
 use tracing::{error, warn};
 
-pub(super) struct SyntaxHighlighter {
+pub(crate) struct SyntaxHighlighter {
     syntaxset: SyntaxSet,
     themes: BTreeMap<String, Theme>,
 }

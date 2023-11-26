@@ -9,6 +9,8 @@ pub mod cli;
 mod config;
 pub mod content;
 mod frontmatter;
+#[cfg(feature = "markdown")]
+mod markdown;
 mod template;
 mod util;
 

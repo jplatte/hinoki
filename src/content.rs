@@ -21,25 +21,20 @@ use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 use walkdir::WalkDir;
 
-use self::markdown::markdown_to_html;
-#[cfg(feature = "markdown")]
 use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
-use self::syntax_highlighting::SyntaxHighlighter;
+use crate::markdown::SyntaxHighlighter;
 use crate::{
     build::BuildDirManager,
     cli::BuildArgs,
     config::Config,
     frontmatter::parse_frontmatter,
+    markdown::markdown_to_html,
     template::{functions, load_templates},
 };
 
 mod file_config;
-#[cfg(feature = "markdown")]
-mod markdown;
 mod metadata;
-#[cfg(feature = "syntax-highlighting")]
-mod syntax_highlighting;
 
 pub(crate) use self::{
     file_config::{FileConfig, ProcessContent},

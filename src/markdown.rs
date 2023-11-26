@@ -1,7 +1,10 @@
 use once_cell::sync::OnceCell;
 use pulldown_cmark::{html::push_html, Options, Parser};
 
-use super::syntax_highlighting::SyntaxHighlighter;
+pub(crate) use self::syntax_highlighting::SyntaxHighlighter;
+
+#[cfg(feature = "syntax-highlighting")]
+mod syntax_highlighting;
 
 pub(crate) fn markdown_to_html(
     content: &str,
