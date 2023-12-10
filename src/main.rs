@@ -1,17 +1,16 @@
 use std::process::ExitCode;
 
 use clap::Parser as _;
+use hinoki_core::{
+    content::{build, dump},
+    read_config,
+};
 use tracing::error;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 mod cli;
 
 use self::cli::{CliArgs, Command};
-
-use hinoki_core::{
-    content::{build, dump},
-    read_config,
-};
 
 fn main() -> ExitCode {
     tracing_subscriber::registry()
