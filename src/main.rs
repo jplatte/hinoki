@@ -29,7 +29,7 @@ fn main() -> ExitCode {
     };
 
     match args.command {
-        Command::Build(args) => build(args, config),
+        Command::Build(args) => build(config, args.include_drafts),
         Command::DumpMetadata => dump(config),
         Command::Serve => unimplemented!(),
     }

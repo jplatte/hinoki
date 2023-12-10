@@ -28,7 +28,6 @@ use self::metadata::metadata_env;
 use self::syntax_highlighting::SyntaxHighlighter;
 use crate::{
     build::BuildDirManager,
-    cli::BuildArgs,
     config::Config,
     frontmatter::parse_frontmatter,
     template::{functions, load_templates},
@@ -46,15 +45,15 @@ pub(crate) use self::{
     metadata::{DirectoryMetadata, FileMetadata},
 };
 
-pub fn build(args: BuildArgs, config: Config) -> ExitCode {
+pub fn build(config: Config, include_drafts: bool) -> ExitCode {
     fn build_inner(
-        args: BuildArgs,
         config: Config,
+        include_drafts: bool,
         build_dir_mgr: &BuildDirManager,
     ) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&alloc)?;
-        let ctx = ContentProcessorContext::new(args, config, template_env, build_dir_mgr);
+        let ctx = ContentProcessorContext::new(config, include_drafts, template_env, build_dir_mgr);
         rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
         Ok(ctx.did_error.load(Ordering::Relaxed))
     }
@@ -83,7 +82,7 @@ pub fn build(args: BuildArgs, config: Config) -> ExitCode {
     let build_dir_mgr = BuildDirManager::new(config.output_dir.clone());
 
     let (r1, r2) = rayon::join(
-        || build_inner(args, config, &build_dir_mgr),
+        || build_inner(config, include_drafts, &build_dir_mgr),
         || copy_static_files(&build_dir_mgr),
     );
 
@@ -104,12 +103,8 @@ pub fn build(args: BuildArgs, config: Config) -> ExitCode {
 
 pub fn dump(config: Config) -> ExitCode {
     let build_dir_mgr = BuildDirManager::new("".into());
-    let ctx = ContentProcessorContext::new(
-        BuildArgs { include_drafts: true },
-        config,
-        minijinja::Environment::empty(),
-        &build_dir_mgr,
-    );
+    let ctx =
+        ContentProcessorContext::new(config, true, minijinja::Environment::empty(), &build_dir_mgr);
 
     let res = rayon::scope(|scope| ContentProcessor::new(scope, &ctx).dump());
     assert!(!ctx.did_error.load(Ordering::Relaxed));
@@ -232,7 +227,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
         let file_meta = self.file_metadata(source_path.clone(), frontmatter)?;
-        if !self.ctx.args.include_drafts && file_meta.draft {
+        if !self.ctx.include_drafts && file_meta.draft {
             return Ok(None);
         }
 
@@ -358,8 +353,8 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 }
 
 struct ContentProcessorContext<'a> {
-    args: BuildArgs,
     config: Config,
+    include_drafts: bool,
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
@@ -369,14 +364,14 @@ struct ContentProcessorContext<'a> {
 
 impl<'a> ContentProcessorContext<'a> {
     fn new(
-        args: BuildArgs,
         config: Config,
+        include_drafts: bool,
         template_env: minijinja::Environment<'a>,
         build_dir_mgr: &'a BuildDirManager,
     ) -> Self {
         Self {
-            args,
             config,
+            include_drafts,
             template_env,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
