@@ -1,3 +1,6 @@
+[workspace]
+members = ["components/*"]
+
 [package]
 name = "hinoki"
 version = "0.1.0"
@@ -8,52 +11,29 @@ license = "AGPL-3.0-only"
 default = ["markdown", "syntax-highlighting", "datetime"]
 
 # Markdown to HTML support
-markdown = ["dep:pulldown-cmark"]
+markdown = ["hinoki_core/markdown"]
 # Syntax highlighting for markdown code blocks
-syntax-highlighting = ["markdown", "dep:once_cell", "dep:syntect"]
+syntax-highlighting = ["hinoki_core/syntax-highlighting"]
 
 # Filters for formatting timestamps as date / time / datetime
-datetime = ["dep:minijinja-contrib"]
+datetime = ["hinoki_core/datetime"]
 # Support for timezone conversion for timestamp formatting filters
-timezone = ["datetime", "minijinja-contrib?/timezone"]
+timezone = ["hinoki_core/timezone"]
 
 # Allow JSON files to be loaded with load_data
-json = ["dep:serde_json"]
+json = ["hinoki_core/json"]
 # Allow YAML files to be loaded with load_data
-yaml = ["dep:serde_yaml"]
+yaml = ["hinoki_core/yaml"]
 
 # Development server (`hinoki serve`) support, not yet working
-dev-server = ["dep:tower-http"]
+dev-server = ["dep:hinoki_dev_server"]
 
 [dependencies]
-anyhow = "1.0.75"
-bumpalo-herd = "0.1.2"
-camino = { version = "1.1.6", features = ["serde1"] }
 clap = { version = "4.4.3", features = ["derive"] }
-fs-err = "2.9.0"
-globset = { version = "0.4.13", default-features = false }
-indexmap = { version = "2.0.2", features = ["serde"] }
-itertools = "0.12.0"
-minijinja = { version = "1.0.7", features = ["custom_syntax", "loader"] }
-minijinja-contrib = { version = "1.0.10", features = ["datetime"], optional = true }
-once_cell = { version = "1.18.0", optional = true }
-pulldown-cmark = { version = "0.9.3", optional = true }
-rayon = "1.8.0"
-serde = { version = "1.0.188", features = ["derive"] }
-serde_json = { version = "1.0.107", optional = true }
-serde_yaml = { version = "0.9.25", optional = true }
-time = { version = "0.3.30", features = ["parsing", "serde-human-readable"] }
-toml = "0.8.0"
-tower-http = { version = "0.4.4", optional = true }
+hinoki_core = { path = "components/core" }
+hinoki_dev_server = { path = "components/dev_server", optional = true }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-walkdir = "2.4.0"
-
-[dependencies.syntect]
-version = "5.1.0"
-default-features = false
-features = ["default-syntaxes", "html", "plist-load", "regex-fancy", "yaml-load"]
-optional = true
 
 # Enable some optimizations for specific dependencies.
 # Otherwise, debug builds are unbearably slow.

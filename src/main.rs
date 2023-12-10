@@ -4,8 +4,11 @@ use clap::Parser as _;
 use tracing::error;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use hinoki::{
-    cli::{CliArgs, Command},
+mod cli;
+
+use self::cli::{CliArgs, Command};
+
+use hinoki_core::{
     content::{build, dump},
     read_config,
 };
