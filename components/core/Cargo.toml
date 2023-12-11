@@ -22,7 +22,7 @@ json = ["dep:serde_json"]
 yaml = ["dep:serde_yaml"]
 
 [dependencies]
-anyhow = "1.0.75"
+anyhow.workspace = true
 bumpalo-herd = "0.1.2"
 camino = { version = "1.1.6", features = ["serde1"] }
 fs-err = "2.9.0"
@@ -47,4 +47,3 @@ version = "5.1.0"
 default-features = false
 features = ["default-syntaxes", "html", "plist-load", "regex-fancy", "yaml-load"]
 optional = true
-

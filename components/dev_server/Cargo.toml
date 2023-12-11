@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow.workspace = true
+hinoki_core = { path = "../core" }
+hyper = { version = "1.0.0", features = ["http1", "http2", "server"] }
+hyper-util = { version = "0.1.0", features = ["server-auto", "http1", "http2", "tokio"] }
+tempfile = "3.8.1"
+tower-http = { version = "0.5.0", features = ["fs"] }

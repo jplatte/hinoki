@@ -33,6 +33,19 @@ fn main() -> ExitCode {
     match args.command {
         Command::Build(args) => build(config, args.include_drafts),
         Command::DumpMetadata => dump(config),
-        Command::Serve => unimplemented!(),
+        #[cfg(feature = "dev-server")]
+        Command::Serve => tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed building the Runtime")
+            .block_on(hinoki_dev_server::serve(config)),
+        #[cfg(not(feature = "dev-server"))]
+        Command::Serve => {
+            error!(
+                "hinoki was compiled without support for this command.\
+                 Please recompile with the 'dev-server' feature enabled."
+            );
+            ExitCode::FAILURE
+        }
     }
 }

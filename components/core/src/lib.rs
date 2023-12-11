@@ -11,7 +11,7 @@ mod frontmatter;
 mod template;
 mod util;
 
-use self::config::Config;
+pub use self::config::Config;
 
 pub fn read_config() -> anyhow::Result<Config> {
     match fs::read_to_string("config.toml") {
