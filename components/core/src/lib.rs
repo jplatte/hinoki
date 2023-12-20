@@ -4,9 +4,9 @@ use anyhow::{anyhow, Context as _};
 use fs_err as fs;
 use tracing::warn;
 
-mod build;
+pub mod build;
 mod config;
-pub mod content;
+mod content;
 mod frontmatter;
 mod template;
 mod util;

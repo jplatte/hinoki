@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use clap::Parser as _;
 use hinoki_core::{
-    content::{build, dump},
+    build::{build, dump},
     read_config,
 };
 use tracing::error;
