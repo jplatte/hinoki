@@ -27,7 +27,7 @@ use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
 use crate::{
-    build::BuildDirManager,
+    build::OutputDirManager,
     config::Config,
     frontmatter::parse_frontmatter,
     template::{functions, load_templates},
@@ -49,16 +49,17 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
     fn build_inner(
         config: Config,
         include_drafts: bool,
-        build_dir_mgr: &BuildDirManager,
+        output_dir_mgr: &OutputDirManager,
     ) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&alloc)?;
-        let ctx = ContentProcessorContext::new(config, include_drafts, template_env, build_dir_mgr);
+        let ctx =
+            ContentProcessorContext::new(config, include_drafts, template_env, output_dir_mgr);
         rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
         Ok(ctx.did_error.load(Ordering::Relaxed))
     }
 
-    fn copy_static_files(build_dir_mgr: &BuildDirManager) -> anyhow::Result<()> {
+    fn copy_static_files(output_dir_mgr: &OutputDirManager) -> anyhow::Result<()> {
         WalkDir::new("theme/static/").into_iter().par_bridge().try_for_each(|entry| {
             let entry = entry?;
             if entry.file_type().is_dir() {
@@ -72,18 +73,18 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 
             let rel_path =
                 utf8_path.strip_prefix("theme/static/").context("invalid WalkDir item")?;
-            let output_path = build_dir_mgr.output_path(rel_path, utf8_path)?;
+            let output_path = output_dir_mgr.output_path(rel_path, utf8_path)?;
 
             fs::copy(utf8_path, output_path)?;
             Ok(())
         })
     }
 
-    let build_dir_mgr = BuildDirManager::new(config.output_dir.clone());
+    let output_dir_mgr = OutputDirManager::new(config.output_dir.clone());
 
     let (r1, r2) = rayon::join(
-        || build_inner(config, include_drafts, &build_dir_mgr),
-        || copy_static_files(&build_dir_mgr),
+        || build_inner(config, include_drafts, &output_dir_mgr),
+        || copy_static_files(&output_dir_mgr),
     );
 
     match (r1, r2) {
@@ -102,9 +103,13 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 }
 
 pub fn dump(config: Config) -> ExitCode {
-    let build_dir_mgr = BuildDirManager::new("".into());
-    let ctx =
-        ContentProcessorContext::new(config, true, minijinja::Environment::empty(), &build_dir_mgr);
+    let output_dir_mgr = OutputDirManager::new("".into());
+    let ctx = ContentProcessorContext::new(
+        config,
+        true,
+        minijinja::Environment::empty(),
+        &output_dir_mgr,
+    );
 
     let res = rayon::scope(|scope| ContentProcessor::new(scope, &ctx).dump());
     assert!(!ctx.did_error.load(Ordering::Relaxed));
@@ -358,7 +363,7 @@ struct ContentProcessorContext<'a> {
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: OnceCell<SyntaxHighlighter>,
-    build_dir_mgr: &'a BuildDirManager,
+    output_dir_mgr: &'a OutputDirManager,
     did_error: AtomicBool,
 }
 
@@ -367,7 +372,7 @@ impl<'a> ContentProcessorContext<'a> {
         config: Config,
         include_drafts: bool,
         template_env: minijinja::Environment<'a>,
-        build_dir_mgr: &'a BuildDirManager,
+        output_dir_mgr: &'a OutputDirManager,
     ) -> Self {
         Self {
             config,
@@ -375,7 +380,7 @@ impl<'a> ContentProcessorContext<'a> {
             template_env,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter: OnceCell::new(),
-            build_dir_mgr,
+            output_dir_mgr,
             did_error: AtomicBool::new(false),
         }
     }
@@ -385,7 +390,7 @@ impl<'a> ContentProcessorContext<'a> {
         file_path: &Utf8Path,
         content_path: &Utf8Path,
     ) -> anyhow::Result<Utf8PathBuf> {
-        self.build_dir_mgr.output_path(file_path, content_path)
+        self.output_dir_mgr.output_path(file_path, content_path)
     }
 }
 
