@@ -10,6 +10,7 @@ use std::{
 use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
+use indexmap::IndexMap;
 use minijinja::context;
 #[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
@@ -20,24 +21,20 @@ use tracing::{error, instrument, warn};
 
 #[cfg(feature = "markdown")]
 use self::markdown::markdown_to_html;
-use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
 use crate::{
-    build::OutputDirManager, config::Config, frontmatter::parse_frontmatter, template::functions,
+    build::OutputDirManager, config::Config, frontmatter::parse_frontmatter,
+    metadata::metadata_env, template::functions,
 };
 
 mod file_config;
 #[cfg(feature = "markdown")]
 mod markdown;
-mod metadata;
 #[cfg(feature = "syntax-highlighting")]
 mod syntax_highlighting;
 
-pub(crate) use self::{
-    file_config::{FileConfig, ProcessContent},
-    metadata::{DirectoryMetadata, FileMetadata},
-};
+pub(crate) use self::file_config::{FileConfig, ProcessContent};
 
 pub(crate) struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, syntax_highlighter (in ctx) plus render_scope
@@ -311,6 +308,32 @@ impl<'a> ContentProcessorContext<'a> {
     ) -> anyhow::Result<Utf8PathBuf> {
         self.output_dir_mgr.output_path(file_path, content_path)
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct DirectoryMetadata {
+    pub subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
+    pub files: Arc<OnceLock<Vec<FileMetadata>>>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct FileMetadata {
+    pub draft: bool,
+    pub slug: String,
+    pub path: Utf8PathBuf,
+    pub title: Option<String>,
+    pub date: Option<Date>,
+    #[serde(default)]
+    pub extra: IndexMap<String, toml::Value>,
+
+    // further data from frontmatter that should be printed in dump-metadata
+    // but not passed to the template as `page.*`
+    #[serde(skip)]
+    pub template: Option<Utf8PathBuf>,
+    #[serde(skip)]
+    pub process_content: Option<ProcessContent>,
+    #[serde(skip)]
+    pub syntax_highlight_theme: Option<String>,
 }
 
 fn render(

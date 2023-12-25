@@ -8,6 +8,7 @@ pub mod build;
 mod config;
 mod content;
 mod frontmatter;
+mod metadata;
 mod template;
 mod util;
 

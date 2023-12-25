@@ -10,34 +10,6 @@ use minijinja::UndefinedBehavior;
 use serde::Serialize;
 use time::Date;
 
-use super::ProcessContent;
-
-#[derive(Debug)]
-pub(crate) struct DirectoryMetadata {
-    pub subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
-    pub files: Arc<OnceLock<Vec<FileMetadata>>>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub(crate) struct FileMetadata {
-    pub draft: bool,
-    pub slug: String,
-    pub path: Utf8PathBuf,
-    pub title: Option<String>,
-    pub date: Option<Date>,
-    #[serde(default)]
-    pub extra: IndexMap<String, toml::Value>,
-
-    // further data from frontmatter that should be printed in dump-metadata
-    // but not passed to the template as `page.*`
-    #[serde(skip)]
-    pub template: Option<Utf8PathBuf>,
-    #[serde(skip)]
-    pub process_content: Option<ProcessContent>,
-    #[serde(skip)]
-    pub syntax_highlight_theme: Option<String>,
-}
-
 pub(super) fn metadata_env() -> minijinja::Environment<'static> {
     let mut env = minijinja::Environment::empty();
 
