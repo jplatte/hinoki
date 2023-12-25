@@ -1,14 +1,10 @@
 use std::{process::ExitCode, sync::atomic::Ordering};
 
-use anyhow::Context as _;
 use bumpalo_herd::Herd;
-use camino::Utf8Path;
-use fs_err::{self as fs};
-use rayon::iter::{ParallelBridge as _, ParallelIterator as _};
-use tracing::{error, warn};
-use walkdir::WalkDir;
+use tracing::error;
 
 use crate::{
+    assets::AssetsProcessorContext,
     config::Config,
     content::{ContentProcessor, ContentProcessorContext},
     template::load_templates,
@@ -19,7 +15,7 @@ mod output_dir;
 pub(crate) use self::output_dir::OutputDirManager;
 
 pub fn build(config: Config, include_drafts: bool) -> ExitCode {
-    fn build_inner(
+    fn process_content(
         config: Config,
         include_drafts: bool,
         output_dir_mgr: &OutputDirManager,
@@ -32,32 +28,16 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
         Ok(ctx.did_error.load(Ordering::Relaxed))
     }
 
-    fn copy_static_files(output_dir_mgr: &OutputDirManager) -> anyhow::Result<()> {
-        WalkDir::new("theme/static/").into_iter().par_bridge().try_for_each(|entry| {
-            let entry = entry?;
-            if entry.file_type().is_dir() {
-                return Ok(());
-            }
-
-            let Some(utf8_path) = Utf8Path::from_path(entry.path()) else {
-                warn!("Skipping non-utf8 file `{}`", entry.path().display());
-                return Ok(());
-            };
-
-            let rel_path =
-                utf8_path.strip_prefix("theme/static/").context("invalid WalkDir item")?;
-            let output_path = output_dir_mgr.output_path(rel_path, utf8_path)?;
-
-            fs::copy(utf8_path, output_path)?;
-            Ok(())
-        })
+    fn process_assets(output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
+        let ctx = AssetsProcessorContext::new(output_dir_mgr);
+        Ok(ctx.did_error.load(Ordering::Relaxed))
     }
 
     let output_dir_mgr = OutputDirManager::new(config.output_dir.clone());
 
     let (r1, r2) = rayon::join(
-        || build_inner(config, include_drafts, &output_dir_mgr),
-        || copy_static_files(&output_dir_mgr),
+        || process_content(config, include_drafts, &output_dir_mgr),
+        || process_assets(&output_dir_mgr),
     );
 
     match (r1, r2) {
@@ -70,8 +50,8 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
             error!("{e:#}");
             ExitCode::FAILURE
         }
-        (Ok(true), Ok(())) => ExitCode::FAILURE,
-        (Ok(false), Ok(())) => ExitCode::SUCCESS,
+        (Ok(false), Ok(false)) => ExitCode::SUCCESS,
+        (Ok(_), Ok(_)) => ExitCode::FAILURE,
     }
 }
 
