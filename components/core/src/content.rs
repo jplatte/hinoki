@@ -18,8 +18,8 @@ use serde::Serialize;
 use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 
-use self::markdown::markdown_to_html;
 #[cfg(feature = "markdown")]
+use self::markdown::markdown_to_html;
 use self::metadata::metadata_env;
 #[cfg(feature = "syntax-highlighting")]
 use self::syntax_highlighting::SyntaxHighlighter;
