@@ -3,6 +3,7 @@ members = ["components/*"]
 
 [workspace.dependencies]
 anyhow = "1.0.75"
+tracing = "0.1.40"
 
 [package]
 name = "hinoki"
@@ -29,14 +30,13 @@ json = ["hinoki_core/json"]
 yaml = ["hinoki_core/yaml"]
 
 # Development server (`hinoki serve`) support, not yet working
-dev-server = ["dep:hinoki_dev_server", "dep:tokio"]
+dev-server = ["dep:hinoki_dev_server"]
 
 [dependencies]
 clap = { version = "4.4.3", features = ["derive"] }
 hinoki_core = { path = "components/core" }
 hinoki_dev_server = { path = "components/dev_server", optional = true }
-tokio = { version = "1.35.0", features = ["rt-multi-thread"], optional = true }
-tracing = "0.1.37"
+tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 # Enable some optimizations for specific dependencies.

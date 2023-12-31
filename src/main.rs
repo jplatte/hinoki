@@ -34,11 +34,7 @@ fn main() -> ExitCode {
         Command::Build(args) => build(config, args.include_drafts),
         Command::DumpMetadata => dump(config),
         #[cfg(feature = "dev-server")]
-        Command::Serve => tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("Failed building the Runtime")
-            .block_on(hinoki_dev_server::serve(config)),
+        Command::Serve => hinoki_dev_server::run(config),
         #[cfg(not(feature = "dev-server"))]
         Command::Serve => {
             error!(
