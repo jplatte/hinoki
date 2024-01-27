@@ -55,11 +55,11 @@ There are also a few other things you can set in this file, as shown in the exam
 # Default value: `build`
 output_dir = "public"
 
-# Convert all .md files to HTML.
-[files."*.md"]
-process_content = "markdown_to_html"
+# Convert all .md content files to HTML.
+[content."*.md"]
+process = "markdown_to_html"
 
-[files."blog/*"]
+[content."blog/*"]
 template = "blog_article.html"
 # It is also possible to use basic templating for paths and titles.
 # This uses a MiniJinja engine with `{{` and `}}` shortened to `{` and `}`.
@@ -103,7 +103,7 @@ template = "my_tpl.html"
 # What kind of processing should be done on the content, if any.
 #
 # For now, only markdown to HTML conversion is available.
-process_content = "markdown_to_html"
+process = "markdown_to_html"
 # Syntax highlighting theme for markdown code blocks.
 #
 # If there is only one `.tmTheme` file in `theme/sublime`, it will be used by

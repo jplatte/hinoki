@@ -5,7 +5,7 @@ use toml::map::Entry as TomlMapEntry;
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct FileConfig {
+pub(crate) struct ContentFileConfig {
     /// If set to `true`, this page will only be included in the output if
     /// building in dev mode.
     pub draft: Option<bool>,
@@ -16,7 +16,7 @@ pub(crate) struct FileConfig {
     pub template: Option<Utf8PathBuf>,
 
     /// What kind of processing should be done on the content, if any.
-    pub process_content: Option<ProcessContent>,
+    pub process: Option<ProcessContent>,
 
     /// Syntax highlighting theme for markdown code blocks.
     pub syntax_highlight_theme: Option<String>,
@@ -38,33 +38,33 @@ pub(crate) struct FileConfig {
     pub extra: IndexMap<String, toml::Value>,
 }
 
-impl FileConfig {
-    pub(crate) fn apply_defaults(&mut self, defaults: &FileConfig) {
+impl ContentFileConfig {
+    pub(crate) fn apply_glob_config(&mut self, config: &ContentFileConfig) {
         if self.draft.is_none() {
-            self.draft = defaults.draft;
+            self.draft = config.draft;
         }
         if self.template.is_none() {
-            self.template = defaults.template.clone();
+            self.template = config.template.clone();
         }
-        if self.process_content.is_none() {
-            self.process_content = defaults.process_content;
+        if self.process.is_none() {
+            self.process = config.process;
         }
         if self.syntax_highlight_theme.is_none() {
-            self.syntax_highlight_theme = defaults.syntax_highlight_theme.clone();
+            self.syntax_highlight_theme = config.syntax_highlight_theme.clone();
         }
         if self.path.is_none() {
-            self.path = defaults.path.clone();
+            self.path = config.path.clone();
         }
         if self.title.is_none() {
-            self.title = defaults.title.clone();
+            self.title = config.title.clone();
         }
         if self.date.is_none() {
-            self.date = defaults.date.clone();
+            self.date = config.date.clone();
         }
         if self.slug.is_none() {
-            self.slug = defaults.slug.clone();
+            self.slug = config.slug.clone();
         }
-        apply_extra_defaults(&mut self.extra, &defaults.extra);
+        apply_extra_defaults(&mut self.extra, &config.extra);
     }
 }
 

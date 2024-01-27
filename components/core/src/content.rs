@@ -34,7 +34,7 @@ mod markdown;
 #[cfg(feature = "syntax-highlighting")]
 mod syntax_highlighting;
 
-pub(crate) use self::file_config::{FileConfig, ProcessContent};
+pub(crate) use self::file_config::{ContentFileConfig, ProcessContent};
 
 pub(crate) struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, syntax_highlighter (in ctx) plus render_scope
@@ -162,10 +162,10 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn file_metadata(
         &self,
         source_path: Utf8PathBuf,
-        mut frontmatter: FileConfig,
+        mut frontmatter: ContentFileConfig,
     ) -> anyhow::Result<FileMetadata> {
-        for defaults in self.ctx.config.file_config_defaults.for_path(&source_path).rev() {
-            frontmatter.apply_defaults(defaults);
+        for config in self.ctx.config.content_file_settings.for_path(&source_path).rev() {
+            frontmatter.apply_glob_config(config);
         }
 
         #[cfg(not(feature = "syntax-highlighting"))]
@@ -208,7 +208,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let path = match self.expand_metadata_tpl(frontmatter.path, &metadata_ctx)? {
             Some(path) => path
                 .strip_prefix('/')
-                .context("paths in frontmatter and defaults must begin with '/'")?
+                .context("paths in frontmatter and config.content must begin with '/'")?
                 .into(),
             None => source_path.clone(),
         };
@@ -221,7 +221,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             date,
             extra: frontmatter.extra,
             template: frontmatter.template,
-            process_content: frontmatter.process_content,
+            process: frontmatter.process,
             syntax_highlight_theme: frontmatter.syntax_highlight_theme,
         })
     }
@@ -250,7 +250,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         content_path: Utf8PathBuf,
     ) -> anyhow::Result<()> {
         #[cfg(not(feature = "markdown"))]
-        if let Some(ProcessContent::MarkdownToHtml) = file_meta.process_content {
+        if let Some(ProcessContent::MarkdownToHtml) = file_meta.process {
             anyhow::bail!(
                 "hinoki was compiled without support for markdown.\
                  Please recompile with the 'markdown' feature enabled."
@@ -331,7 +331,7 @@ pub(crate) struct FileMetadata {
     #[serde(skip)]
     pub template: Option<Utf8PathBuf>,
     #[serde(skip)]
-    pub process_content: Option<ProcessContent>,
+    pub process: Option<ProcessContent>,
     #[serde(skip)]
     pub syntax_highlight_theme: Option<String>,
 }
@@ -354,7 +354,7 @@ fn render(
 
     // Don't buffer file contents in memory if no templating or content
     // processing is needed.
-    if template.is_none() && file_meta.process_content.is_none() {
+    if template.is_none() && file_meta.process.is_none() {
         io::copy(&mut input_file, &mut output_file)?;
         return Ok(());
     }
@@ -363,7 +363,7 @@ fn render(
     input_file.read_to_string(&mut content)?;
 
     #[cfg(feature = "markdown")]
-    if let Some(ProcessContent::MarkdownToHtml) = file_meta.process_content {
+    if let Some(ProcessContent::MarkdownToHtml) = file_meta.process {
         let syntax_highlight_theme = file_meta.syntax_highlight_theme.as_deref();
         content = markdown_to_html(&content, &ctx.syntax_highlighter, syntax_highlight_theme)?;
     }
