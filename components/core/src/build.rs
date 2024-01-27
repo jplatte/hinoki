@@ -32,8 +32,8 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
         Ok(ctx.did_error.load(Ordering::Relaxed))
     }
 
-    fn copy_static_files(output_dir_mgr: &OutputDirManager) -> anyhow::Result<()> {
-        WalkDir::new("theme/static/").into_iter().par_bridge().try_for_each(|entry| {
+    fn copy_assets(output_dir_mgr: &OutputDirManager) -> anyhow::Result<()> {
+        WalkDir::new("theme/assets/").into_iter().par_bridge().try_for_each(|entry| {
             let entry = entry?;
             if entry.file_type().is_dir() {
                 return Ok(());
@@ -45,7 +45,7 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
             };
 
             let rel_path =
-                utf8_path.strip_prefix("theme/static/").context("invalid WalkDir item")?;
+                utf8_path.strip_prefix("theme/assets/").context("invalid WalkDir item")?;
             let output_path = output_dir_mgr.output_path(rel_path, utf8_path)?;
 
             fs::copy(utf8_path, output_path)?;
@@ -57,7 +57,7 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 
     let (r1, r2) = rayon::join(
         || build_inner(config, include_drafts, &output_dir_mgr),
-        || copy_static_files(&output_dir_mgr),
+        || copy_assets(&output_dir_mgr),
     );
 
     match (r1, r2) {
