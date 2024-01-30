@@ -3,6 +3,7 @@ members = ["components/*"]
 
 [workspace.dependencies]
 anyhow = "1.0.75"
+camino = "1.1.6"
 tracing = "0.1.40"
 
 [package]
@@ -33,6 +34,7 @@ yaml = ["hinoki_core/yaml"]
 dev-server = ["dep:hinoki_dev_server"]
 
 [dependencies]
+camino = { workspace = true, features = ["serde"] }
 clap = { version = "4.4.3", features = ["derive"] }
 hinoki_core = { path = "components/core" }
 hinoki_dev_server = { path = "components/dev_server", optional = true }

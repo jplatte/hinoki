@@ -43,6 +43,7 @@ async fn watch(config: &Config) -> anyhow::Result<()> {
         Err(_) => todo!(),
     })?;
 
+    watcher.watch(config.path.as_ref(), RecursiveMode::NonRecursive)?;
     watcher.watch("content".as_ref(), RecursiveMode::Recursive)?;
     watcher.watch("theme".as_ref(), RecursiveMode::Recursive)?;
 

@@ -14,6 +14,9 @@ pub struct Config {
     pub content_file_settings: ContentFileSettings,
     #[serde(default)]
     pub extra: IndexMap<String, toml::Value>,
+
+    #[serde(skip, default)]
+    pub path: Utf8PathBuf,
 }
 
 fn default_output_dir() -> Utf8PathBuf {

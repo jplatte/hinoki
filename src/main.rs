@@ -22,7 +22,7 @@ fn main() -> ExitCode {
         .init();
 
     let args = CliArgs::parse();
-    let config = match read_config() {
+    let config = match read_config(&args.config) {
         Ok(c) => c,
         Err(e) => {
             error!("{e:#}");
