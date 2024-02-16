@@ -3,7 +3,7 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
-use anyhow::bail;
+use anyhow::{bail, Context as _};
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 
@@ -41,7 +41,7 @@ impl OutputDirManager {
         // This is racy, but that's okay.
         let dir_exists = self.output_subdirs.read().unwrap().contains(dir);
         if !dir_exists {
-            fs::create_dir_all(output_path.parent().unwrap())?;
+            fs::create_dir_all(output_path.parent().unwrap()).context("creating output subdir")?;
             self.output_subdirs.write().unwrap().insert(dir.to_owned());
         }
 

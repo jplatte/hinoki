@@ -34,7 +34,7 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 
     fn copy_assets(output_dir_mgr: &OutputDirManager) -> anyhow::Result<()> {
         WalkDir::new("theme/assets/").into_iter().par_bridge().try_for_each(|entry| {
-            let entry = entry?;
+            let entry = entry.context("walking asset directory")?;
             if entry.file_type().is_dir() {
                 return Ok(());
             }
@@ -48,7 +48,7 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
                 utf8_path.strip_prefix("theme/assets/").context("invalid WalkDir item")?;
             let output_path = output_dir_mgr.output_path(rel_path, utf8_path)?;
 
-            fs::copy(utf8_path, output_path)?;
+            fs::copy(utf8_path, output_path).context("copying asset")?;
             Ok(())
         })
     }
