@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "hinoki=warn".into()),
+                .unwrap_or_else(|_| "hinoki=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     };
 
     match args.command {
-        Command::Build(args) => build(config, args.include_drafts),
+        Command::Build(args) => build(&config, args.include_drafts),
         Command::DumpMetadata => dump(config),
         #[cfg(feature = "dev-server")]
         Command::Serve => hinoki_dev_server::run(config),
