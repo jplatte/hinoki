@@ -5,7 +5,7 @@ use serde::{de, Deserialize, Deserializer};
 
 use crate::content::{ContentFileConfig, ProcessContent};
 
-#[derive(Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default = "default_output_dir")]
@@ -23,6 +23,7 @@ fn default_output_dir() -> Utf8PathBuf {
     "build".into()
 }
 
+#[derive(Clone)]
 pub struct ContentFileSettings {
     values: Vec<ContentFileConfig>,
     globset: GlobSet,

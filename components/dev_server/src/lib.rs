@@ -2,13 +2,13 @@ use std::{
     net::{Ipv6Addr, SocketAddr},
     process::ExitCode,
     sync::Arc,
+    time::Duration,
 };
 
 use camino::Utf8Path;
-use futures_util::future::try_join;
-use hinoki_core::Config;
+use fs_err as fs;
+use hinoki_core::{build::build, Config};
 use hyper_util::service::TowerToHyperService;
-use notify::{RecursiveMode, Watcher};
 use tempfile::tempdir;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
@@ -32,27 +32,76 @@ pub fn run(config: Config) -> ExitCode {
 async fn run_inner(mut config: Config) -> anyhow::Result<()> {
     let output_dir = tempdir()?;
     config.output_dir = output_dir.path().to_owned().try_into()?;
+    build(&config, true);
 
-    try_join(watch(&config), serve(&config)).await?;
+    let _watch_guard = start_watch(&config)?;
+    serve(&config).await?;
     Ok(())
 }
 
-async fn watch(config: &Config) -> anyhow::Result<()> {
-    let mut watcher = notify::recommended_watcher(|res| match res {
-        Ok(_) => todo!(),
-        Err(_) => todo!(),
+/// Start file notification watcher.
+///
+/// Dropping the returned value stops the watcher thread.
+fn start_watch(config: &Config) -> anyhow::Result<impl Drop> {
+    use notify::{
+        event::{CreateKind, ModifyKind},
+        EventKind, RecursiveMode, Watcher,
+    };
+    use notify_debouncer_full::{new_debouncer, DebounceEventResult};
+
+    const DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
+
+    let current_dir = fs::canonicalize(".")?;
+
+    let mut debouncer = new_debouncer(DEBOUNCE_DURATION, None, {
+        let config = config.clone();
+        let current_dir = current_dir.clone();
+        move |res: DebounceEventResult| match res {
+            Err(errors) => {
+                for error in errors {
+                    error!("notify error: {error}");
+                }
+            }
+            Ok(mut events) => {
+                events.retain_mut(|ev| {
+                    match &ev.kind {
+                        EventKind::Access(_)
+                        | EventKind::Create(CreateKind::Folder)
+                        | EventKind::Modify(ModifyKind::Metadata(_)) => return false,
+                        EventKind::Any
+                        | EventKind::Create(_)
+                        | EventKind::Modify(_)
+                        | EventKind::Remove(_)
+                        | EventKind::Other => {}
+                    };
+
+                    ev.paths.retain(|path| {
+                        let rel_path = match path.strip_prefix(&current_dir) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                error!("notify event path error: {e}");
+                                return false;
+                            }
+                        };
+
+                        rel_path.starts_with(&config.path)
+                            || rel_path.starts_with("content")
+                            || rel_path.starts_with("theme")
+                    });
+
+                    !ev.paths.is_empty()
+                });
+
+                if !events.is_empty() {
+                    build(&config, true);
+                }
+            }
+        }
     })?;
 
-    watcher.watch(config.path.as_ref(), RecursiveMode::NonRecursive)?;
-    watcher.watch("content".as_ref(), RecursiveMode::Recursive)?;
-    watcher.watch("theme".as_ref(), RecursiveMode::Recursive)?;
+    debouncer.watcher().watch(current_dir.as_ref(), RecursiveMode::Recursive)?;
 
-    tokio::task::spawn_blocking(|| {
-        // TODO
-    })
-    .await?;
-
-    Ok(())
+    Ok(debouncer)
 }
 
 async fn serve(config: &Config) -> anyhow::Result<()> {

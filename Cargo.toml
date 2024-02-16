@@ -4,6 +4,7 @@ members = ["components/*"]
 [workspace.dependencies]
 anyhow = "1.0.75"
 camino = "1.1.6"
+fs-err = "2.9.0"
 tracing = "0.1.40"
 
 [package]
@@ -13,7 +14,7 @@ edition = "2021"
 license = "AGPL-3.0-only"
 
 [features]
-default = ["markdown", "syntax-highlighting", "datetime"]
+default = ["dev-server", "markdown", "syntax-highlighting", "datetime"]
 
 # Markdown to HTML support
 markdown = ["hinoki_core/markdown"]

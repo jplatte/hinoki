@@ -18,9 +18,9 @@ mod output_dir;
 
 pub(crate) use self::output_dir::OutputDirManager;
 
-pub fn build(config: Config, include_drafts: bool) -> ExitCode {
+pub fn build(config: &Config, include_drafts: bool) -> ExitCode {
     fn build_inner(
-        config: Config,
+        config: &Config,
         include_drafts: bool,
         output_dir_mgr: &OutputDirManager,
     ) -> anyhow::Result<bool> {
@@ -78,7 +78,7 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 pub fn dump(config: Config) -> ExitCode {
     let output_dir_mgr = OutputDirManager::new("".into());
     let ctx = ContentProcessorContext::new(
-        config,
+        &config,
         true,
         minijinja::Environment::empty(),
         &output_dir_mgr,

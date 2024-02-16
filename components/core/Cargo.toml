@@ -25,7 +25,7 @@ yaml = ["dep:serde_yaml"]
 anyhow.workspace = true
 bumpalo-herd = "0.1.2"
 camino = { version = "1.1.6", features = ["serde1"] }
-fs-err = "2.9.0"
+fs-err.workspace = true
 globset = { version = "0.4.13", default-features = false }
 indexmap = { version = "2.0.2", features = ["serde"] }
 itertools = "0.12.0"

@@ -3,7 +3,7 @@ use indexmap::{map::Entry as IndexMapEntry, IndexMap};
 use serde::Deserialize;
 use toml::map::Entry as TomlMapEntry;
 
-#[derive(Default, Deserialize)]
+#[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ContentFileConfig {
     /// If set to `true`, this page will only be included in the output if

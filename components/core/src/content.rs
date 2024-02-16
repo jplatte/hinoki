@@ -274,7 +274,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 }
 
 pub(crate) struct ContentProcessorContext<'a> {
-    config: Config,
+    config: &'a Config,
     include_drafts: bool,
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
@@ -285,7 +285,7 @@ pub(crate) struct ContentProcessorContext<'a> {
 
 impl<'a> ContentProcessorContext<'a> {
     pub(crate) fn new(
-        config: Config,
+        config: &'a Config,
         include_drafts: bool,
         template_env: minijinja::Environment<'a>,
         output_dir_mgr: &'a OutputDirManager,
