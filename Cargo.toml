@@ -49,5 +49,4 @@ regex-automata = { opt-level = 2 }
 
 fancy-regex = { opt-level = 1 }
 regex-syntax = { opt-level = 1 }
-similar = { opt-level = 1 }
 syntect = { opt-level = 1 }
