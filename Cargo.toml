@@ -45,9 +45,4 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 # Enable some optimizations for specific dependencies.
 # Otherwise, debug builds are unbearably slow.
 [profile.dev.package]
-flate2 = { opt-level = 2 }
-regex-automata = { opt-level = 2 }
-
-fancy-regex = { opt-level = 1 }
-regex-syntax = { opt-level = 1 }
 syntect = { opt-level = 1 }

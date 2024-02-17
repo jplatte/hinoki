@@ -31,7 +31,7 @@ fn main() -> ExitCode {
     };
 
     match args.command {
-        Command::Build(args) => build(&config, args.include_drafts),
+        Command::Build(args) => build(config, args.include_drafts),
         Command::DumpMetadata => dump(config),
         #[cfg(feature = "dev-server")]
         Command::Serve => hinoki_dev_server::run(config),

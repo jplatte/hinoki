@@ -1,13 +1,14 @@
 use std::{
+    fmt,
     net::{Ipv6Addr, SocketAddr},
     process::ExitCode,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use camino::Utf8Path;
 use fs_err as fs;
-use hinoki_core::{build::build, Config};
+use hinoki_core::{build::Build, Config};
 use hyper_util::service::TowerToHyperService;
 use tempfile::tempdir;
 use tower_http::services::ServeDir;
@@ -32,17 +33,23 @@ pub fn run(config: Config) -> ExitCode {
 async fn run_inner(mut config: Config) -> anyhow::Result<()> {
     let output_dir = tempdir()?;
     config.output_dir = output_dir.path().to_owned().try_into()?;
-    build(&config, true);
 
-    let _watch_guard = start_watch(&config)?;
+    let build = Build::new(config, true);
+    let begin = Instant::now();
+    build.run();
+    info!("Built site in {}", FormatDuration(begin.elapsed()));
+
+    let config = build.config().clone();
+    let _watch_guard = start_watch(build)?;
     serve(&config).await?;
+
     Ok(())
 }
 
 /// Start file notification watcher.
 ///
 /// Dropping the returned value stops the watcher thread.
-fn start_watch(config: &Config) -> anyhow::Result<impl Drop> {
+fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
     use notify::{
         event::{CreateKind, ModifyKind},
         EventKind, RecursiveMode, Watcher,
@@ -54,7 +61,6 @@ fn start_watch(config: &Config) -> anyhow::Result<impl Drop> {
     let current_dir = fs::canonicalize(".")?;
 
     let mut debouncer = new_debouncer(DEBOUNCE_DURATION, None, {
-        let config = config.clone();
         let current_dir = current_dir.clone();
         move |res: DebounceEventResult| match res {
             Err(errors) => {
@@ -84,7 +90,7 @@ fn start_watch(config: &Config) -> anyhow::Result<impl Drop> {
                             }
                         };
 
-                        rel_path.starts_with(&config.path)
+                        rel_path.starts_with(&build.config().path)
                             || rel_path.starts_with("content")
                             || rel_path.starts_with("theme")
                     });
@@ -93,7 +99,9 @@ fn start_watch(config: &Config) -> anyhow::Result<impl Drop> {
                 });
 
                 if !events.is_empty() {
-                    build(&config, true);
+                    let begin = Instant::now();
+                    build.run();
+                    info!("Rebuilt site in {}", FormatDuration(begin.elapsed()));
                 }
             }
         }
@@ -127,5 +135,29 @@ async fn serve(config: &Config) -> anyhow::Result<()> {
                 error!("Failed to serve connection: {err:#}");
             }
         });
+    }
+}
+
+struct FormatDuration(Duration);
+
+impl fmt::Display for FormatDuration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let duration = self.0;
+        let total_secs = duration.as_secs();
+        if let hours @ 1.. = total_secs / 3600 {
+            let minutes = total_secs / 60 % 60;
+            return write!(f, "{hours}h {minutes}min");
+        }
+        if let minutes @ 1.. = total_secs / 60 {
+            let secs = total_secs % 60;
+            return write!(f, "{minutes}min {secs}s");
+        }
+
+        let millis = duration.as_millis();
+        if total_secs > 0 {
+            write!(f, "{total_secs}s ")?;
+        }
+
+        write!(f, "{millis}ms")
     }
 }

@@ -21,8 +21,6 @@ use tracing::{error, instrument, warn};
 
 #[cfg(feature = "markdown")]
 use self::markdown::markdown_to_html;
-#[cfg(feature = "syntax-highlighting")]
-use self::syntax_highlighting::SyntaxHighlighter;
 use crate::{
     build::OutputDirManager, config::Config, frontmatter::parse_frontmatter,
     metadata::metadata_env, template::functions,
@@ -35,6 +33,8 @@ mod markdown;
 mod syntax_highlighting;
 
 pub(crate) use self::file_config::{ContentFileConfig, ProcessContent};
+#[cfg(feature = "syntax-highlighting")]
+pub(crate) use self::syntax_highlighting::SyntaxHighlighter;
 
 pub(crate) struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, syntax_highlighter (in ctx) plus render_scope
@@ -278,7 +278,7 @@ pub(crate) struct ContentProcessorContext<'a> {
     include_drafts: bool,
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: OnceCell<SyntaxHighlighter>,
+    syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
     output_dir_mgr: &'a OutputDirManager,
     pub(crate) did_error: AtomicBool,
 }
@@ -289,13 +289,14 @@ impl<'a> ContentProcessorContext<'a> {
         include_drafts: bool,
         template_env: minijinja::Environment<'a>,
         output_dir_mgr: &'a OutputDirManager,
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
     ) -> Self {
         Self {
             config,
             include_drafts,
             template_env,
             #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter: OnceCell::new(),
+            syntax_highlighter,
             output_dir_mgr,
             did_error: AtomicBool::new(false),
         }
