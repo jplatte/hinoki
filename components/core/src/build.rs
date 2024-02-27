@@ -10,9 +10,11 @@ use rayon::iter::{ParallelBridge as _, ParallelIterator as _};
 use tracing::{error, warn};
 use walkdir::WalkDir;
 
+#[cfg(feature = "syntax-highlighting")]
+use crate::content::SyntaxHighlighter;
 use crate::{
     config::Config,
-    content::{ContentProcessor, ContentProcessorContext, SyntaxHighlighter},
+    content::{ContentProcessor, ContentProcessorContext},
     template::load_templates,
 };
 
