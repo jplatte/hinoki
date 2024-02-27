@@ -1,14 +1,6 @@
-use std::{
-    borrow::Cow,
-    collections::BTreeMap,
-    sync::{Arc, OnceLock},
-};
+use std::borrow::Cow;
 
-use camino::Utf8PathBuf;
-use indexmap::IndexMap;
 use minijinja::UndefinedBehavior;
-use serde::Serialize;
-use time::Date;
 
 pub(super) fn metadata_env() -> minijinja::Environment<'static> {
     let mut env = minijinja::Environment::empty();
