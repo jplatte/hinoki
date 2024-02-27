@@ -1,12 +1,14 @@
+#[cfg(feature = "syntax-highlighting")]
 use once_cell::sync::OnceCell;
 use pulldown_cmark::{html::push_html, Options, Parser};
 
+#[cfg(feature = "syntax-highlighting")]
 use super::syntax_highlighting::SyntaxHighlighter;
 
 pub(crate) fn markdown_to_html(
     content: &str,
-    syntax_highlighter: &OnceCell<SyntaxHighlighter>,
-    syntax_highlight_theme: Option<&str>,
+    #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &OnceCell<SyntaxHighlighter>,
+    #[cfg(feature = "syntax-highlighting")] syntax_highlight_theme: Option<&str>,
 ) -> anyhow::Result<String> {
     let parser = Parser::new_ext(content, Options::ENABLE_FOOTNOTES);
     let mut html_buf = String::new();
