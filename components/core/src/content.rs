@@ -366,7 +366,7 @@ fn render(
     #[cfg(feature = "markdown")]
     if let Some(ProcessContent::MarkdownToHtml) = file_meta.process {
         let syntax_highlight_theme = file_meta.syntax_highlight_theme.as_deref();
-        content = markdown_to_html(&content, &ctx.syntax_highlighter, syntax_highlight_theme)?;
+        content = markdown_to_html(&content, ctx.syntax_highlighter, syntax_highlight_theme)?;
     }
 
     if let Some(template) = template {
