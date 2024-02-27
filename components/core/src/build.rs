@@ -1,3 +1,5 @@
+#[cfg(feature = "syntax-highlighting")]
+use std::sync::Arc;
 use std::{process::ExitCode, sync::atomic::Ordering};
 
 use anyhow::Context as _;
@@ -26,7 +28,7 @@ pub struct Build {
     config: Config,
     include_drafts: bool,
     #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: OnceCell<SyntaxHighlighter>,
+    syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
 }
 
 impl Build {
@@ -35,7 +37,7 @@ impl Build {
             config,
             include_drafts,
             #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter: OnceCell::new(),
+            syntax_highlighter: Arc::new(OnceCell::new()),
         }
     }
 
@@ -87,7 +89,11 @@ impl Build {
 
     fn run_inner(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
         let alloc = Herd::new();
-        let template_env = load_templates(&alloc)?;
+        let template_env = load_templates(
+            &alloc,
+            #[cfg(feature = "syntax-highlighting")]
+            self.syntax_highlighter.clone(),
+        )?;
         let ctx = ContentProcessorContext::new(
             &self.config,
             self.include_drafts,

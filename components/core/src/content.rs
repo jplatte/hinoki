@@ -19,8 +19,6 @@ use serde::Serialize;
 use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 
-#[cfg(feature = "markdown")]
-use self::markdown::markdown_to_html;
 use crate::{
     build::OutputDirManager, config::Config, frontmatter::parse_frontmatter,
     metadata::metadata_env, template::functions,
@@ -33,6 +31,8 @@ mod markdown;
 mod syntax_highlighting;
 
 pub(crate) use self::file_config::{ContentFileConfig, ProcessContent};
+#[cfg(feature = "markdown")]
+pub(crate) use self::markdown::markdown_to_html;
 #[cfg(feature = "syntax-highlighting")]
 pub(crate) use self::syntax_highlighting::SyntaxHighlighter;
 
@@ -333,7 +333,7 @@ pub(crate) struct FileMetadata {
     pub template: Option<Utf8PathBuf>,
     #[serde(skip)]
     pub process: Option<ProcessContent>,
-    #[serde(skip)]
+    #[serde(rename = "__hinoki_internal__syntax_highlight_theme")]
     pub syntax_highlight_theme: Option<String>,
 }
 
