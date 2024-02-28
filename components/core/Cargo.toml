@@ -47,3 +47,9 @@ version = "5.1.0"
 default-features = false
 features = ["default-syntaxes", "html", "plist-load", "regex-fancy", "yaml-load"]
 optional = true
+
+[dev-dependencies]
+assert_fs = "1.1.1"
+ctor = "0.2.7"
+predicates = "3.1.0"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

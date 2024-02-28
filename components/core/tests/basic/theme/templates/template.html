@@ -1,0 +1,10 @@
+<!doctype html>
+
+<div class="content">
+    {{ content | safe }}
+</div>
+<ul class="extra">
+    {% for value in config.extra.custom_key %}
+    <li>{{ value }}</li>
+    {% endfor %}
+</ul>
