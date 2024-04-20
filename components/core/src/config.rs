@@ -45,7 +45,7 @@ impl ContentFileSettings {
     pub(crate) fn for_path(
         &self,
         path: &Utf8Path,
-    ) -> impl Iterator<Item = &ContentFileConfig> + DoubleEndedIterator {
+    ) -> impl DoubleEndedIterator<Item = &ContentFileConfig> {
         self.globset.matches(path).into_iter().map(|idx| &self.values[idx])
     }
 }
