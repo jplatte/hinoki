@@ -120,7 +120,7 @@ impl Object for GetFile {
                 let self_idx_ordered = order_bi_map.original_to_ordered[self.current_file_idx];
                 if self_idx_ordered > 0 {
                     let prev_idx_original = order_bi_map.ordered_to_original[self_idx_ordered - 1];
-                    Ok(Value::from_serializable(&current_dir_files[prev_idx_original]))
+                    Ok(Value::from_serialize(&current_dir_files[prev_idx_original]))
                 } else {
                     Ok(Value::UNDEFINED)
                 }
@@ -133,7 +133,7 @@ impl Object for GetFile {
                 let self_idx_ordered = order_bi_map.original_to_ordered[self.current_file_idx];
                 match order_bi_map.ordered_to_original.get(self_idx_ordered + 1) {
                     Some(&next_idx_original) => {
-                        Ok(Value::from_serializable(&current_dir_files[next_idx_original]))
+                        Ok(Value::from_serialize(&current_dir_files[next_idx_original]))
                     }
                     None => Ok(Value::UNDEFINED),
                 }
@@ -167,7 +167,7 @@ impl Object for GetFiles {
 
         let (subdir_name,): (&str,) = from_args(args)?;
         match self.current_dir_subdirs.get(subdir_name) {
-            Some(subdir_meta) => Ok(Value::from_serializable(&subdir_meta.files.get().unwrap())),
+            Some(subdir_meta) => Ok(Value::from_serialize(subdir_meta.files.get().unwrap())),
             None => Err(minijinja::Error::new(
                 minijinja::ErrorKind::InvalidOperation,
                 format!("no subdirectory `{subdir_name}`"),
