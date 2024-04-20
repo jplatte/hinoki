@@ -9,9 +9,11 @@ tracing = "0.1.40"
 
 [package]
 name = "hinoki"
+description = "A simple, yet very flexible static site generator."
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-only"
+repository = "https://github.com/jplatte/hinoki"
 
 [features]
 default = ["dev-server", "markdown", "syntax-highlighting", "datetime"]
