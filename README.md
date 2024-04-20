@@ -1,6 +1,6 @@
 # Hinoki
 
-A simple, yet very flexible static site generator. It's also super fast.
+A simple, yet very flexible static site generator.
 
 It's early days for this project, and this readme is currently all there is in terms of documentation.
 Feel free to open issues for anything that is unclear!
@@ -16,7 +16,7 @@ Feel free to open issues for anything that is unclear!
 - [x] TOML frontmatter
 - [x] Custom defaults for frontmatter via path patterns
 - [ ] Pagination
-- [ ] Development server
+- [x] Development server
 - [ ] SCSS compilation
 - [ ] Page summaries
 
