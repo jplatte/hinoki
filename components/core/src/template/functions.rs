@@ -25,6 +25,8 @@ use crate::{
     util::OrderBiMap,
 };
 
+use super::context::HinokiContext;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Ordering {
@@ -140,35 +142,23 @@ impl Object for GetFile {
     }
 }
 
-#[repr(transparent)]
-#[derive(Debug)]
-pub(crate) struct GetFiles {
-    current_dir_subdirs: BTreeMap<String, DirectoryMetadata>,
-}
+pub(super) fn get_files(
+    state: &minijinja::State,
+    subdir_name: &str,
+) -> Result<Value, minijinja::Error> {
+    let cx = state.lookup("$hinoki_cx").ok_or_else(|| {
+        minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, "internal error")
+    })?;
+    let cx: &HinokiContext = cx.downcast_object_ref().ok_or_else(|| {
+        minijinja::Error::new(minijinja::ErrorKind::InvalidOperation, "internal error")
+    })?;
 
-impl GetFiles {
-    pub(crate) fn new(current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>) -> Arc<Self> {
-        // SAFETY: GetFiles is a repr(transparent) struct over the map
-        unsafe { Arc::from_raw(Arc::into_raw(current_dir_subdirs) as _) }
-    }
-}
-
-impl Object for GetFiles {
-    fn call(
-        self: &Arc<Self>,
-        _state: &minijinja::State,
-        args: &[Value],
-    ) -> Result<Value, minijinja::Error> {
-        // TODO: split at slash and do nested lookup?
-
-        let (subdir_name,): (&str,) = from_args(args)?;
-        match self.current_dir_subdirs.get(subdir_name) {
-            Some(subdir_meta) => Ok(Value::from_serialize(subdir_meta.files.get().unwrap())),
-            None => Err(minijinja::Error::new(
-                minijinja::ErrorKind::InvalidOperation,
-                format!("no subdirectory `{subdir_name}`"),
-            )),
-        }
+    match cx.current_dir_subdirs.get(subdir_name) {
+        Some(subdir_meta) => Ok(Value::from_serialize(subdir_meta.files.get().unwrap())),
+        None => Err(minijinja::Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            format!("no subdirectory `{subdir_name}`"),
+        )),
     }
 }
 
