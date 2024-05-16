@@ -324,7 +324,6 @@ pub(crate) struct FileMetadata {
     pub path: Utf8PathBuf,
     pub title: Option<String>,
     pub date: Option<Date>,
-    #[serde(default)]
     pub extra: IndexMap<String, toml::Value>,
 
     // further data from frontmatter that should be printed in dump-metadata
