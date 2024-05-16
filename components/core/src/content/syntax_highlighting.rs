@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::Context as _;
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, Tag};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, Tag, TagEnd};
 use syntect::{
     highlighting::{Theme, ThemeSet},
     html::highlighted_html_for_string,
@@ -61,7 +61,7 @@ impl SyntaxHighlighter {
                 None
             }
             // FIXME: use if-let guard when stable (https://github.com/rust-lang/rust/issues/51114)
-            ev @ Event::End(Tag::CodeBlock(_)) => match current_code_block_language.take() {
+            ev @ Event::End(TagEnd::CodeBlock) => match current_code_block_language.take() {
                 Some(language) => {
                     let syntax =
                         self.syntaxset.find_syntax_by_token(&language).unwrap_or_else(|| {
