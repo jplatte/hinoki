@@ -20,7 +20,7 @@ pub(crate) fn markdown(
         #[cfg(feature = "syntax-highlighting")]
         let syntax_highlight_theme = state
             .lookup("page")
-            .and_then(|value| value.get_attr("__hinoki_internal__syntax_highlight_theme").ok());
+            .and_then(|value| value.get_attr("$hinoki_syntax_highlight_theme").ok());
 
         markdown_to_html(
             input,

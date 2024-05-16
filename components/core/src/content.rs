@@ -333,7 +333,7 @@ pub(crate) struct FileMetadata {
     pub template: Option<Utf8PathBuf>,
     #[serde(skip)]
     pub process: Option<ProcessContent>,
-    #[serde(rename = "__hinoki_internal__syntax_highlight_theme")]
+    #[serde(rename = "$hinoki_syntax_highlight_theme")]
     pub syntax_highlight_theme: Option<String>,
 }
 
