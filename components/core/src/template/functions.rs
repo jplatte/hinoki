@@ -3,7 +3,7 @@
 
 use std::{
     collections::BTreeMap,
-    fmt::{self, Display},
+    fmt::Display,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -88,12 +88,6 @@ impl GetFile {
     }
 }
 
-impl fmt::Display for GetFile {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "get_file")
-    }
-}
-
 impl Object for GetFile {
     fn call(
         self: &Arc<Self>,
@@ -156,12 +150,6 @@ impl GetFiles {
     pub(crate) fn new(current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>) -> Arc<Self> {
         // SAFETY: GetFiles is a repr(transparent) struct over the map
         unsafe { Arc::from_raw(Arc::into_raw(current_dir_subdirs) as _) }
-    }
-}
-
-impl fmt::Display for GetFiles {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "get_files")
     }
 }
 
