@@ -115,7 +115,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                     functions::GetFile::new(files_oncelock.clone(), subdirs.clone(), idx),
                 ),
                 get_files => minijinja::Value::from(
-                    functions::GetFiles::new(subdirs.clone()),
+                    minijinja::value::DynObject::new(functions::GetFiles::new(subdirs.clone())),
                 ),
             };
 

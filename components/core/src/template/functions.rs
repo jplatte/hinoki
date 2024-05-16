@@ -95,7 +95,11 @@ impl fmt::Display for GetFile {
 }
 
 impl Object for GetFile {
-    fn call(&self, _state: &minijinja::State, args: &[Value]) -> Result<Value, minijinja::Error> {
+    fn call(
+        self: &Arc<Self>,
+        _state: &minijinja::State,
+        args: &[Value],
+    ) -> Result<Value, minijinja::Error> {
         // TODO: Add `Option<String>` non-kw parameter to look up specific file
         //       by relative path
         let (kwargs,): (Kwargs,) = from_args(args)?;
@@ -162,7 +166,11 @@ impl fmt::Display for GetFiles {
 }
 
 impl Object for GetFiles {
-    fn call(&self, _state: &minijinja::State, args: &[Value]) -> Result<Value, minijinja::Error> {
+    fn call(
+        self: &Arc<Self>,
+        _state: &minijinja::State,
+        args: &[Value],
+    ) -> Result<Value, minijinja::Error> {
         // TODO: split at slash and do nested lookup?
 
         let (subdir_name,): (&str,) = from_args(args)?;

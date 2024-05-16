@@ -29,8 +29,8 @@ fs-err.workspace = true
 globset = { version = "0.4.13", default-features = false }
 indexmap = { version = "2.0.2", features = ["serde"] }
 itertools = "0.12.0"
-minijinja = { version = "1.0.7", features = ["custom_syntax", "loader"] }
-minijinja-contrib = { version = "1.0.10", features = ["datetime"], optional = true }
+minijinja = { version = "2.0.1", features = ["custom_syntax", "loader"] }
+minijinja-contrib = { version = "2.0.1", features = ["datetime"], optional = true }
 once_cell = { version = "1.18.0", optional = true }
 pulldown-cmark = { version = "0.11.0", optional = true }
 rayon = "1.8.0"

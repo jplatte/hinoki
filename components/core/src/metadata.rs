@@ -7,15 +7,12 @@ pub(super) fn metadata_env() -> minijinja::Environment<'static> {
 
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     env.set_loader(|tpl| Ok(Some(tpl.to_owned())));
-    env.set_syntax(minijinja::Syntax {
-        block_start: "{%".into(),
-        block_end: "%}".into(),
-        variable_start: "{".into(),
-        variable_end: "}".into(),
-        comment_start: "{#".into(),
-        comment_end: "#}".into(),
-    })
-    .expect("custom minijinja syntax is valid");
+    env.set_syntax(
+        minijinja::syntax::SyntaxConfig::builder()
+            .variable_delimiters("{", "}")
+            .build()
+            .expect("custom minijinja syntax is valid"),
+    );
 
     env.add_filter("default", minijinja::filters::default);
     env.add_filter("first", minijinja::filters::first);
