@@ -40,22 +40,22 @@ pub(crate) use self::markdown::markdown_to_html;
 pub(crate) use self::syntax_highlighting::SyntaxHighlighter;
 
 pub(crate) struct ContentProcessor<'c, 's, 'sc> {
-    // FIXME: args, template_env, syntax_highlighter (in ctx) plus render_scope
+    // FIXME: args, template_env, syntax_highlighter (in cx) plus render_scope
     // only actually needed for building, not for dumping. Abstract using a
     // trait an abstract build vs. dump behavior that way instead of internal
     // branching?
     metadata_env: minijinja::Environment<'static>,
     render_scope: &'s rayon::Scope<'sc>,
-    ctx: &'c ContentProcessorContext<'c>,
+    cx: &'c ContentProcessorContext<'c>,
 }
 
 impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     pub(crate) fn new(
         render_scope: &'s rayon::Scope<'sc>,
-        ctx: &'c ContentProcessorContext<'c>,
+        cx: &'c ContentProcessorContext<'c>,
     ) -> Self {
         let metadata_env = metadata_env();
-        Self { metadata_env, render_scope, ctx }
+        Self { metadata_env, render_scope, cx }
     }
 
     pub(crate) fn run(&self) -> anyhow::Result<()> {
@@ -114,7 +114,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let mut idx = 0;
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
             let hinoki_cx = HinokiContext::new(
-                self.ctx.syntax_highlighter.clone(),
+                self.cx.syntax_highlighter.clone(),
                 files_oncelock.clone(),
                 subdirs.clone(),
                 idx,
@@ -149,7 +149,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
         let file_meta = self.file_metadata(source_path.clone(), frontmatter)?;
-        if !self.ctx.include_drafts && file_meta.draft {
+        if !self.cx.include_drafts && file_meta.draft {
             return Ok(None);
         }
 
@@ -169,7 +169,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         source_path: Utf8PathBuf,
         mut frontmatter: ContentFileConfig,
     ) -> anyhow::Result<FileMetadata> {
-        for config in self.ctx.config.content_file_settings.for_path(&source_path).rev() {
+        for config in self.cx.config.content_file_settings.for_path(&source_path).rev() {
             frontmatter.apply_glob_config(config);
         }
 
@@ -182,7 +182,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         }
 
         let source_file_stem = source_path.file_stem().expect("path must have a file name");
-        let mut metadata_ctx = MetadataContext {
+        let mut metadata_cx = MetadataContext {
             source_path: &source_path,
             source_file_stem,
             slug: None,
@@ -191,14 +191,14 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         };
 
         let slug = self
-            .expand_metadata_tpl(frontmatter.slug, &metadata_ctx)
+            .expand_metadata_tpl(frontmatter.slug, &metadata_cx)
             .context("expanding slug template")?
             .unwrap_or_else(|| source_file_stem.to_owned());
         let title = self
-            .expand_metadata_tpl(frontmatter.title, &metadata_ctx)
+            .expand_metadata_tpl(frontmatter.title, &metadata_cx)
             .context("expanding title template")?;
         let date = self
-            .expand_metadata_tpl(frontmatter.date, &metadata_ctx)
+            .expand_metadata_tpl(frontmatter.date, &metadata_cx)
             .context("expanding date template")?
             .filter(|s| !s.is_empty())
             .map(|s| Date::parse(&s, &Iso8601::DATE))
@@ -206,11 +206,11 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             .context("parsing date")?;
 
         // Make slug, title and date available for path templates
-        metadata_ctx.slug = Some(&slug);
-        metadata_ctx.title = title.as_deref();
-        metadata_ctx.date = date.as_ref();
+        metadata_cx.slug = Some(&slug);
+        metadata_cx.title = title.as_deref();
+        metadata_cx.date = date.as_ref();
 
-        let path = match self.expand_metadata_tpl(frontmatter.path, &metadata_ctx)? {
+        let path = match self.expand_metadata_tpl(frontmatter.path, &metadata_cx)? {
             Some(path) => path
                 .strip_prefix('/')
                 .context("paths in frontmatter and config.content must begin with '/'")?
@@ -234,12 +234,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn expand_metadata_tpl(
         &self,
         maybe_value: Option<String>,
-        metadata_ctx: &MetadataContext<'_>,
+        metadata_cx: &MetadataContext<'_>,
     ) -> anyhow::Result<Option<String>> {
         maybe_value
             .map(|value| {
                 if value.contains('{') {
-                    Ok(self.metadata_env.get_template(&value)?.render(metadata_ctx)?)
+                    Ok(self.metadata_env.get_template(&value)?.render(metadata_cx)?)
                 } else {
                     Ok(value)
                 }
@@ -262,15 +262,15 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             );
         }
 
-        let ctx = self.ctx;
+        let cx = self.cx;
         let span = tracing::Span::current();
 
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render(file_meta, input_file, hinoki_cx, ctx, content_path) {
+            if let Err(e) = render(file_meta, input_file, hinoki_cx, cx, content_path) {
                 error!("{e:#}");
-                ctx.did_error.store(true, Ordering::Relaxed);
+                cx.did_error.store(true, Ordering::Relaxed);
             }
         });
 
@@ -347,16 +347,16 @@ fn render(
     file_meta: FileMetadata,
     mut input_file: BufReader<File>,
     hinoki_cx: HinokiContext,
-    ctx: &ContentProcessorContext<'_>,
+    cx: &ContentProcessorContext<'_>,
     content_path: Utf8PathBuf,
 ) -> anyhow::Result<()> {
     let template = file_meta
         .template
         .as_ref()
-        .map(|tpl| ctx.template_env.get_template(tpl.as_str()))
+        .map(|tpl| cx.template_env.get_template(tpl.as_str()))
         .transpose()?;
 
-    let output_path = ctx.output_path(&file_meta.path, &content_path)?;
+    let output_path = cx.output_path(&file_meta.path, &content_path)?;
     let mut output_file = BufWriter::new(File::create(output_path)?);
 
     // Don't buffer file contents in memory if no templating or content
@@ -375,22 +375,22 @@ fn render(
         content = markdown_to_html(
             &content,
             #[cfg(feature = "syntax-highlighting")]
-            &ctx.syntax_highlighter,
+            &cx.syntax_highlighter,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlight_theme,
         )?;
     }
 
     if let Some(template) = template {
-        let extra = &ctx.config.extra;
-        let ctx = TemplateContext {
+        let extra = &cx.config.extra;
+        let cx = TemplateContext {
             content,
             page: &file_meta,
             config: context! { extra },
             hinoki_cx: Arc::new(hinoki_cx),
         };
 
-        template.render_to_write(ctx, output_file)?;
+        template.render_to_write(cx, output_file)?;
     } else {
         output_file.write_all(content.as_bytes())?;
     }

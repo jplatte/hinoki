@@ -90,7 +90,7 @@ impl Build {
     fn run_inner(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&alloc)?;
-        let ctx = ContentProcessorContext::new(
+        let cx = ContentProcessorContext::new(
             &self.config,
             self.include_drafts,
             template_env,
@@ -98,8 +98,8 @@ impl Build {
             #[cfg(feature = "syntax-highlighting")]
             self.syntax_highlighter.clone(),
         );
-        rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
-        Ok(ctx.did_error.load(Ordering::Relaxed))
+        rayon::scope(|scope| ContentProcessor::new(scope, &cx).run())?;
+        Ok(cx.did_error.load(Ordering::Relaxed))
     }
 }
 
@@ -110,7 +110,7 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 pub fn dump(config: Config) -> ExitCode {
     let output_dir_mgr = OutputDirManager::new("".into());
     #[cfg(feature = "syntax-highlighting")]
-    let ctx = ContentProcessorContext::new(
+    let cx = ContentProcessorContext::new(
         &config,
         true,
         minijinja::Environment::empty(),
@@ -119,8 +119,8 @@ pub fn dump(config: Config) -> ExitCode {
         Arc::new(OnceCell::new()),
     );
 
-    let res = rayon::scope(|scope| ContentProcessor::new(scope, &ctx).dump());
-    assert!(!ctx.did_error.load(Ordering::Relaxed));
+    let res = rayon::scope(|scope| ContentProcessor::new(scope, &cx).dump());
+    assert!(!cx.did_error.load(Ordering::Relaxed));
 
     match res {
         Ok(_) => ExitCode::SUCCESS,
