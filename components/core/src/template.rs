@@ -1,29 +1,19 @@
 use std::sync::mpsc;
-#[cfg(feature = "syntax-highlighting")]
-use std::sync::Arc;
 
 use anyhow::{format_err, Context as _};
 use bumpalo_herd::Herd;
 use camino::Utf8Path;
 use fs_err::{self as fs};
 use minijinja::UndefinedBehavior;
-#[cfg(feature = "syntax-highlighting")]
-use once_cell::sync::OnceCell;
 use rayon::iter::{ParallelBridge as _, ParallelIterator as _};
 use tracing::warn;
 use walkdir::WalkDir;
-
-#[cfg(feature = "syntax-highlighting")]
-use crate::content::SyntaxHighlighter;
 
 pub(crate) mod context;
 pub(crate) mod filters;
 pub(crate) mod functions;
 
-pub(crate) fn load_templates(
-    alloc: &Herd,
-    #[cfg(feature = "syntax-highlighting")] syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
-) -> anyhow::Result<minijinja::Environment<'_>> {
+pub(crate) fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
     struct TemplateSource<'b> {
         /// Path relative to the template directory
         rel_path: &'b str,
@@ -31,10 +21,7 @@ pub(crate) fn load_templates(
         source: &'b str,
     }
 
-    let mut template_env = environment(
-        #[cfg(feature = "syntax-highlighting")]
-        syntax_highlighter,
-    );
+    let mut template_env = environment();
 
     let (template_source_tx, template_source_rx) = mpsc::channel();
     let read_templates = move || {
@@ -100,19 +87,11 @@ pub(crate) fn load_templates(
     Ok(template_env)
 }
 
-fn environment<'a>(
-    #[cfg(feature = "syntax-highlighting")] syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
-) -> minijinja::Environment<'a> {
+fn environment<'a>() -> minijinja::Environment<'a> {
     let mut env = minijinja::Environment::new();
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     #[cfg(feature = "markdown")]
-    env.add_filter(
-        "markdown",
-        filters::markdown(
-            #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter,
-        ),
-    );
+    env.add_filter("markdown", filters::markdown);
     env.add_function("get_file", functions::get_file);
     env.add_function("get_files", functions::get_files);
     env.add_function("load_data", functions::load_data);

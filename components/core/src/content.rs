@@ -113,7 +113,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let files_oncelock = Arc::new(OnceLock::new());
         let mut idx = 0;
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
-            let hinoki_cx = HinokiContext::new(files_oncelock.clone(), subdirs.clone(), idx);
+            let hinoki_cx = HinokiContext::new(
+                self.ctx.syntax_highlighter.clone(),
+                files_oncelock.clone(),
+                subdirs.clone(),
+                idx,
+            );
 
             if let Some(file) = self
                 .process_content_file(path.clone(), hinoki_cx, write_output)
@@ -278,7 +283,7 @@ pub(crate) struct ContentProcessorContext<'a> {
     include_drafts: bool,
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
+    syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
     output_dir_mgr: &'a OutputDirManager,
     pub(crate) did_error: AtomicBool,
 }
@@ -289,7 +294,9 @@ impl<'a> ContentProcessorContext<'a> {
         include_drafts: bool,
         template_env: minijinja::Environment<'a>,
         output_dir_mgr: &'a OutputDirManager,
-        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: &'a OnceCell<SyntaxHighlighter>,
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: Arc<
+            OnceCell<SyntaxHighlighter>,
+        >,
     ) -> Self {
         Self {
             config,
@@ -368,7 +375,7 @@ fn render(
         content = markdown_to_html(
             &content,
             #[cfg(feature = "syntax-highlighting")]
-            ctx.syntax_highlighter,
+            &ctx.syntax_highlighter,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlight_theme,
         )?;

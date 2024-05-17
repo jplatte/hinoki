@@ -1,9 +1,12 @@
 use std::{
     collections::BTreeMap,
+    fmt,
     sync::{Arc, OnceLock},
     time::Duration,
 };
 
+#[cfg(feature = "syntax-highlighting")]
+use once_cell::sync::OnceCell;
 use serde::{
     de::{self, IntoDeserializer as _},
     Deserialize, Serialize, Serializer,
@@ -11,12 +14,13 @@ use serde::{
 use tracing::warn;
 
 use crate::{
-    content::{DirectoryMetadata, FileMetadata},
+    content::{DirectoryMetadata, FileMetadata, SyntaxHighlighter},
     util::OrderBiMap,
 };
 
-#[derive(Debug)]
 pub(crate) struct HinokiContext {
+    #[cfg(feature = "syntax-highlighting")]
+    pub syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
     #[cfg(feature = "syntax-highlighting")]
     pub syntax_highlight_theme: Option<String>,
     pub current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
@@ -28,11 +32,15 @@ pub(crate) struct HinokiContext {
 
 impl HinokiContext {
     pub(crate) fn new(
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: Arc<
+            OnceCell<SyntaxHighlighter>,
+        >,
         current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
         current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
         current_file_idx: usize,
     ) -> Self {
         Self {
+            syntax_highlighter,
             syntax_highlight_theme: None,
             current_dir_files,
             current_dir_subdirs,
@@ -64,6 +72,12 @@ impl HinokiContext {
                 .file_indices_by_date
                 .get_or_init(|| OrderBiMap::new(current_dir_files, |file| file.date)),
         }
+    }
+}
+
+impl fmt::Debug for HinokiContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HinokiContext").finish_non_exhaustive()
     }
 }
 

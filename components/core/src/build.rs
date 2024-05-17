@@ -89,18 +89,14 @@ impl Build {
 
     fn run_inner(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
         let alloc = Herd::new();
-        let template_env = load_templates(
-            &alloc,
-            #[cfg(feature = "syntax-highlighting")]
-            self.syntax_highlighter.clone(),
-        )?;
+        let template_env = load_templates(&alloc)?;
         let ctx = ContentProcessorContext::new(
             &self.config,
             self.include_drafts,
             template_env,
             output_dir_mgr,
             #[cfg(feature = "syntax-highlighting")]
-            &self.syntax_highlighter,
+            self.syntax_highlighter.clone(),
         );
         rayon::scope(|scope| ContentProcessor::new(scope, &ctx).run())?;
         Ok(ctx.did_error.load(Ordering::Relaxed))
@@ -114,14 +110,13 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 pub fn dump(config: Config) -> ExitCode {
     let output_dir_mgr = OutputDirManager::new("".into());
     #[cfg(feature = "syntax-highlighting")]
-    let syntax_highlighter = OnceCell::new();
     let ctx = ContentProcessorContext::new(
         &config,
         true,
         minijinja::Environment::empty(),
         &output_dir_mgr,
         #[cfg(feature = "syntax-highlighting")]
-        &syntax_highlighter,
+        Arc::new(OnceCell::new()),
     );
 
     let res = rayon::scope(|scope| ContentProcessor::new(scope, &ctx).dump());
