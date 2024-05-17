@@ -38,7 +38,9 @@ impl HinokiContext {
         current_file_idx: usize,
     ) -> Self {
         Self {
+            #[cfg(feature = "syntax-highlighting")]
             syntax_highlighter,
+            #[cfg(feature = "syntax-highlighting")]
             syntax_highlight_theme: None,
             current_dir_files,
             current_dir_subdirs,

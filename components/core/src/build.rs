@@ -105,7 +105,6 @@ pub fn build(config: Config, include_drafts: bool) -> ExitCode {
 
 pub fn dump(config: Config) -> ExitCode {
     let output_dir_mgr = OutputDirManager::new("".into());
-    #[cfg(feature = "syntax-highlighting")]
     let cx = ContentProcessorContext::new(
         &config,
         true,

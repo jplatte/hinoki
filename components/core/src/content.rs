@@ -112,6 +112,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let mut idx = 0;
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
             let hinoki_cx = HinokiContext::new(
+                #[cfg(feature = "syntax-highlighting")]
                 self.cx.syntax_highlighter.clone(),
                 files_oncelock.clone(),
                 subdirs.clone(),
