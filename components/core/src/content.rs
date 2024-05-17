@@ -12,8 +12,6 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err::{self as fs, File};
 use indexmap::IndexMap;
 use minijinja::context;
-#[cfg(feature = "syntax-highlighting")]
-use once_cell::sync::OnceCell;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
 use time::{format_description::well_known::Iso8601, Date};
@@ -37,7 +35,7 @@ pub(crate) use self::file_config::{ContentFileConfig, ProcessContent};
 #[cfg(feature = "markdown")]
 pub(crate) use self::markdown::markdown_to_html;
 #[cfg(feature = "syntax-highlighting")]
-pub(crate) use self::syntax_highlighting::SyntaxHighlighter;
+pub(crate) use self::syntax_highlighting::{LazySyntaxHighlighter, SyntaxHighlighter};
 
 pub(crate) struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, syntax_highlighter (in cx) plus render_scope
@@ -283,7 +281,7 @@ pub(crate) struct ContentProcessorContext<'a> {
     include_drafts: bool,
     template_env: minijinja::Environment<'a>,
     #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
+    syntax_highlighter: LazySyntaxHighlighter,
     output_dir_mgr: &'a OutputDirManager,
     pub(crate) did_error: AtomicBool,
 }
@@ -294,9 +292,7 @@ impl<'a> ContentProcessorContext<'a> {
         include_drafts: bool,
         template_env: minijinja::Environment<'a>,
         output_dir_mgr: &'a OutputDirManager,
-        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: Arc<
-            OnceCell<SyntaxHighlighter>,
-        >,
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: LazySyntaxHighlighter,
     ) -> Self {
         Self {
             config,

@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Context as _;
+use once_cell::sync::OnceCell;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Tag, TagEnd};
 use syntect::{
     highlighting::{Theme, ThemeSet},
@@ -8,6 +9,8 @@ use syntect::{
     parsing::SyntaxSet,
 };
 use tracing::{error, warn};
+
+pub(crate) type LazySyntaxHighlighter = Arc<OnceCell<SyntaxHighlighter>>;
 
 pub(crate) struct SyntaxHighlighter {
     syntaxset: SyntaxSet,

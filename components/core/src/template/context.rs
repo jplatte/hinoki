@@ -5,22 +5,22 @@ use std::{
     time::Duration,
 };
 
-#[cfg(feature = "syntax-highlighting")]
-use once_cell::sync::OnceCell;
 use serde::{
     de::{self, IntoDeserializer as _},
     Deserialize, Serialize, Serializer,
 };
 use tracing::warn;
 
+#[cfg(feature = "syntax-highlighting")]
+use crate::content::LazySyntaxHighlighter;
 use crate::{
-    content::{DirectoryMetadata, FileMetadata, SyntaxHighlighter},
+    content::{DirectoryMetadata, FileMetadata},
     util::OrderBiMap,
 };
 
 pub(crate) struct HinokiContext {
     #[cfg(feature = "syntax-highlighting")]
-    pub syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
+    pub syntax_highlighter: LazySyntaxHighlighter,
     #[cfg(feature = "syntax-highlighting")]
     pub syntax_highlight_theme: Option<String>,
     pub current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
@@ -32,9 +32,7 @@ pub(crate) struct HinokiContext {
 
 impl HinokiContext {
     pub(crate) fn new(
-        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: Arc<
-            OnceCell<SyntaxHighlighter>,
-        >,
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: LazySyntaxHighlighter,
         current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
         current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
         current_file_idx: usize,

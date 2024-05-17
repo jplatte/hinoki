@@ -1,19 +1,15 @@
-#[cfg(feature = "syntax-highlighting")]
-use std::sync::Arc;
 use std::{process::ExitCode, sync::atomic::Ordering};
 
 use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::Utf8Path;
 use fs_err::{self as fs};
-#[cfg(feature = "syntax-highlighting")]
-use once_cell::sync::OnceCell;
 use rayon::iter::{ParallelBridge as _, ParallelIterator as _};
 use tracing::{error, warn};
 use walkdir::WalkDir;
 
 #[cfg(feature = "syntax-highlighting")]
-use crate::content::SyntaxHighlighter;
+use crate::content::LazySyntaxHighlighter;
 use crate::{
     config::Config,
     content::{ContentProcessor, ContentProcessorContext},
@@ -28,7 +24,7 @@ pub struct Build {
     config: Config,
     include_drafts: bool,
     #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: Arc<OnceCell<SyntaxHighlighter>>,
+    syntax_highlighter: LazySyntaxHighlighter,
 }
 
 impl Build {
@@ -37,7 +33,7 @@ impl Build {
             config,
             include_drafts,
             #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter: Arc::new(OnceCell::new()),
+            syntax_highlighter: LazySyntaxHighlighter::default(),
         }
     }
 
@@ -116,7 +112,7 @@ pub fn dump(config: Config) -> ExitCode {
         minijinja::Environment::empty(),
         &output_dir_mgr,
         #[cfg(feature = "syntax-highlighting")]
-        Arc::new(OnceCell::new()),
+        LazySyntaxHighlighter::default(),
     );
 
     let res = rayon::scope(|scope| ContentProcessor::new(scope, &cx).dump());
