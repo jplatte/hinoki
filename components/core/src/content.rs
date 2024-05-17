@@ -20,8 +20,11 @@ use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 
 use crate::{
-    build::OutputDirManager, config::Config, frontmatter::parse_frontmatter,
-    metadata::metadata_env, template::functions,
+    build::OutputDirManager,
+    config::Config,
+    frontmatter::parse_frontmatter,
+    metadata::metadata_env,
+    template::context::{HinokiContext, TemplateContext},
 };
 
 mod file_config;
@@ -110,17 +113,10 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let files_oncelock = Arc::new(OnceLock::new());
         let mut idx = 0;
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
-            let functions = context! {
-                get_file => minijinja::Value::from_object(
-                    functions::GetFile::new(files_oncelock.clone(), subdirs.clone(), idx),
-                ),
-                get_files => minijinja::Value::from(
-                    minijinja::value::DynObject::new(functions::GetFiles::new(subdirs.clone())),
-                ),
-            };
+            let hinoki_cx = HinokiContext::new(files_oncelock.clone(), subdirs.clone(), idx);
 
             if let Some(file) = self
-                .process_content_file(path.clone(), functions.clone(), write_output)
+                .process_content_file(path.clone(), hinoki_cx, write_output)
                 .with_context(|| format!("processing `{path}`"))?
             {
                 idx += 1;
@@ -138,7 +134,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn process_content_file(
         &self,
         content_path: Utf8PathBuf,
-        functions: minijinja::Value,
+        mut hinoki_cx: HinokiContext,
         write_output: WriteOutput,
     ) -> anyhow::Result<Option<FileMetadata>> {
         let source_path =
@@ -153,7 +149,11 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         }
 
         if let WriteOutput::Yes = write_output {
-            self.render_file(file_meta.clone(), functions, input_file, content_path)?;
+            #[cfg(feature = "syntax-highlighting")]
+            {
+                hinoki_cx.syntax_highlight_theme = file_meta.syntax_highlight_theme.clone();
+            }
+            self.render_file(file_meta.clone(), hinoki_cx, input_file, content_path)?;
         }
 
         Ok(Some(file_meta))
@@ -245,7 +245,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn render_file(
         &self,
         file_meta: FileMetadata,
-        functions: minijinja::Value,
+        hinoki_cx: HinokiContext,
         input_file: BufReader<File>,
         content_path: Utf8PathBuf,
     ) -> anyhow::Result<()> {
@@ -263,7 +263,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render(file_meta, input_file, functions, ctx, content_path) {
+            if let Err(e) = render(file_meta, input_file, hinoki_cx, ctx, content_path) {
                 error!("{e:#}");
                 ctx.did_error.store(true, Ordering::Relaxed);
             }
@@ -332,14 +332,14 @@ pub(crate) struct FileMetadata {
     pub template: Option<Utf8PathBuf>,
     #[serde(skip)]
     pub process: Option<ProcessContent>,
-    #[serde(rename = "$hinoki_syntax_highlight_theme")]
+    #[serde(skip)]
     pub syntax_highlight_theme: Option<String>,
 }
 
 fn render(
     file_meta: FileMetadata,
     mut input_file: BufReader<File>,
-    functions: minijinja::Value,
+    hinoki_cx: HinokiContext,
     ctx: &ContentProcessorContext<'_>,
     content_path: Utf8PathBuf,
 ) -> anyhow::Result<()> {
@@ -376,11 +376,11 @@ fn render(
 
     if let Some(template) = template {
         let extra = &ctx.config.extra;
-        let ctx = context! {
+        let ctx = TemplateContext {
             content,
-            page => &file_meta,
-            config => context! { extra },
-            ..functions
+            page: &file_meta,
+            config: context! { extra },
+            hinoki_cx: Arc::new(hinoki_cx),
         };
 
         template.render_to_write(ctx, output_file)?;

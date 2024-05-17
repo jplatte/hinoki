@@ -16,6 +16,7 @@ use walkdir::WalkDir;
 #[cfg(feature = "syntax-highlighting")]
 use crate::content::SyntaxHighlighter;
 
+pub(crate) mod context;
 pub(crate) mod filters;
 pub(crate) mod functions;
 
@@ -112,6 +113,8 @@ fn environment<'a>(
             syntax_highlighter,
         ),
     );
+    env.add_function("get_file", functions::get_file);
+    env.add_function("get_files", functions::get_files);
     env.add_function("load_data", functions::load_data);
 
     #[cfg(feature = "datetime")]
