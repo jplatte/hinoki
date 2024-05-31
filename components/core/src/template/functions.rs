@@ -32,7 +32,7 @@ pub(super) fn get_file(
 
             let current_dir_files = cx.current_dir_files();
             let order_bi_map = cx.get_or_init_file_indices_by(prev_by, current_dir_files);
-            let self_idx_ordered = order_bi_map.original_to_ordered[cx.current_file_idx];
+            let self_idx_ordered = order_bi_map.original_to_ordered[cx.render.current_file_idx];
             if self_idx_ordered > 0 {
                 let prev_idx_original = order_bi_map.ordered_to_original[self_idx_ordered - 1];
                 Ok(Value::from_serialize(&current_dir_files[prev_idx_original]))
@@ -45,7 +45,7 @@ pub(super) fn get_file(
 
             let current_dir_files = cx.current_dir_files();
             let order_bi_map = cx.get_or_init_file_indices_by(next_by, current_dir_files);
-            let self_idx_ordered = order_bi_map.original_to_ordered[cx.current_file_idx];
+            let self_idx_ordered = order_bi_map.original_to_ordered[cx.render.current_file_idx];
             match order_bi_map.ordered_to_original.get(self_idx_ordered + 1) {
                 Some(&next_idx_original) => {
                     Ok(Value::from_serialize(&current_dir_files[next_idx_original]))
@@ -61,7 +61,7 @@ pub(super) fn get_files(
     subdir_name: &str,
 ) -> Result<Value, minijinja::Error> {
     let cx = state.hinoki_cx()?;
-    match cx.current_dir_subdirs.get(subdir_name) {
+    match cx.get_subdir(subdir_name) {
         Some(subdir_meta) => Ok(Value::from_serialize(subdir_meta.files.get().unwrap())),
         None => Err(minijinja::Error::new(
             minijinja::ErrorKind::InvalidOperation,

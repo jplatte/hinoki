@@ -13,7 +13,7 @@ use crate::content::LazySyntaxHighlighter;
 use crate::{
     config::Config,
     content::{ContentProcessor, ContentProcessorContext},
-    template::load_templates,
+    template::{context::GlobalContext, load_templates},
 };
 
 mod output_dir;
@@ -91,8 +91,10 @@ impl Build {
             self.include_drafts,
             template_env,
             output_dir_mgr,
-            #[cfg(feature = "syntax-highlighting")]
-            self.syntax_highlighter.clone(),
+            GlobalContext::new(
+                #[cfg(feature = "syntax-highlighting")]
+                self.syntax_highlighter.clone(),
+            ),
         );
         rayon::scope(|scope| ContentProcessor::new(scope, &cx).run())?;
         Ok(cx.did_error.load(Ordering::Relaxed))
@@ -110,8 +112,10 @@ pub fn dump(config: Config) -> ExitCode {
         true,
         minijinja::Environment::empty(),
         &output_dir_mgr,
-        #[cfg(feature = "syntax-highlighting")]
-        LazySyntaxHighlighter::default(),
+        GlobalContext::new(
+            #[cfg(feature = "syntax-highlighting")]
+            LazySyntaxHighlighter::default(),
+        ),
     );
 
     let res = rayon::scope(|scope| ContentProcessor::new(scope, &cx).dump());

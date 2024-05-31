@@ -22,7 +22,9 @@ use crate::{
     config::Config,
     frontmatter::parse_frontmatter,
     metadata::metadata_env,
-    template::context::{HinokiContext, TemplateContext},
+    template::context::{
+        DirectoryContext, GlobalContext, HinokiContext, RenderContext, TemplateContext,
+    },
 };
 
 mod file_config;
@@ -35,7 +37,7 @@ pub(crate) use self::file_config::{ContentFileConfig, ProcessContent};
 #[cfg(feature = "markdown")]
 pub(crate) use self::markdown::markdown_to_html;
 #[cfg(feature = "syntax-highlighting")]
-pub(crate) use self::syntax_highlighting::LazySyntaxHighlighter;
+pub(crate) use self::syntax_highlighting::{LazySyntaxHighlighter, SyntaxHighlighter};
 
 pub(crate) struct ContentProcessor<'c, 's, 'sc> {
     // FIXME: args, template_env, syntax_highlighter (in cx) plus render_scope
@@ -108,19 +110,11 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                 .collect::<anyhow::Result<BTreeMap<_, _>>>()?,
         );
 
-        let files_oncelock = Arc::new(OnceLock::new());
+        let dir_cx = DirectoryContext::new(subdirs);
         let mut idx = 0;
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
-            let hinoki_cx = HinokiContext::new(
-                #[cfg(feature = "syntax-highlighting")]
-                self.cx.syntax_highlighter.clone(),
-                files_oncelock.clone(),
-                subdirs.clone(),
-                idx,
-            );
-
             if let Some(file) = self
-                .process_content_file(path.clone(), hinoki_cx, write_output)
+                .process_content_file(path.clone(), idx, &dir_cx, write_output)
                 .with_context(|| format!("processing `{path}`"))?
             {
                 idx += 1;
@@ -130,15 +124,16 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             anyhow::Ok(v)
         })?;
 
-        files_oncelock.set(files).unwrap(); // only set from here
-        Ok(DirectoryMetadata { subdirs, files: files_oncelock })
+        dir_cx.set_files(files);
+        Ok(dir_cx.into_metadata())
     }
 
     #[instrument(skip_all, fields(?content_path))]
     fn process_content_file(
         &self,
         content_path: Utf8PathBuf,
-        mut hinoki_cx: HinokiContext,
+        idx: usize,
+        dir_cx: &DirectoryContext,
         write_output: WriteOutput,
     ) -> anyhow::Result<Option<FileMetadata>> {
         let source_path =
@@ -153,10 +148,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         }
 
         if let WriteOutput::Yes = write_output {
-            #[cfg(feature = "syntax-highlighting")]
-            {
-                hinoki_cx.syntax_highlight_theme = file_meta.syntax_highlight_theme.clone();
-            }
+            let global_cx = self.cx.template_global_cx.clone();
+            let render_cx = RenderContext::new(
+                idx,
+                #[cfg(feature = "syntax-highlighting")]
+                file_meta.syntax_highlight_theme.clone(),
+            );
+            let hinoki_cx = HinokiContext::new(global_cx, dir_cx.to_owned(), render_cx);
             self.render_file(file_meta.clone(), hinoki_cx, input_file, content_path)?;
         }
 
@@ -281,8 +279,7 @@ pub(crate) struct ContentProcessorContext<'a> {
     config: &'a Config,
     include_drafts: bool,
     template_env: minijinja::Environment<'a>,
-    #[cfg(feature = "syntax-highlighting")]
-    syntax_highlighter: LazySyntaxHighlighter,
+    template_global_cx: GlobalContext,
     output_dir_mgr: &'a OutputDirManager,
     pub(crate) did_error: AtomicBool,
 }
@@ -293,17 +290,21 @@ impl<'a> ContentProcessorContext<'a> {
         include_drafts: bool,
         template_env: minijinja::Environment<'a>,
         output_dir_mgr: &'a OutputDirManager,
-        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: LazySyntaxHighlighter,
+        template_global_cx: GlobalContext,
     ) -> Self {
         Self {
             config,
             include_drafts,
             template_env,
-            #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter,
+            template_global_cx,
             output_dir_mgr,
             did_error: AtomicBool::new(false),
         }
+    }
+
+    #[cfg(feature = "syntax-highlighting")]
+    fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
+        self.template_global_cx.syntax_highlighter()
     }
 
     fn output_path(
@@ -372,7 +373,7 @@ fn render(
         content = markdown_to_html(
             &content,
             #[cfg(feature = "syntax-highlighting")]
-            &cx.syntax_highlighter,
+            cx.syntax_highlighter()?,
             #[cfg(feature = "syntax-highlighting")]
             syntax_highlight_theme,
         )?;

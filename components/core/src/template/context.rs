@@ -12,46 +12,103 @@ use serde::{
 use tracing::warn;
 
 #[cfg(feature = "syntax-highlighting")]
-use crate::content::LazySyntaxHighlighter;
+use crate::content::{LazySyntaxHighlighter, SyntaxHighlighter};
 use crate::{
     content::{DirectoryMetadata, FileMetadata},
     util::OrderBiMap,
 };
 
-pub(crate) struct HinokiContext {
+#[derive(Clone)]
+pub(crate) struct GlobalContext {
     #[cfg(feature = "syntax-highlighting")]
-    pub syntax_highlighter: LazySyntaxHighlighter,
+    syntax_highlighter: LazySyntaxHighlighter,
+}
+
+impl GlobalContext {
+    pub(crate) fn new(
+        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: LazySyntaxHighlighter,
+    ) -> Self {
+        Self { syntax_highlighter }
+    }
+
+    #[cfg(feature = "syntax-highlighting")]
+    pub(crate) fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
+        self.syntax_highlighter.get_or_try_init(SyntaxHighlighter::new)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct DirectoryContext {
+    subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
+    files: Arc<OnceLock<Vec<FileMetadata>>>,
+    file_indices_by_date: Arc<OnceLock<OrderBiMap>>,
+}
+
+impl DirectoryContext {
+    pub(crate) fn new(subdirs: Arc<BTreeMap<String, DirectoryMetadata>>) -> Self {
+        Self {
+            subdirs,
+            files: Arc::new(OnceLock::new()),
+            file_indices_by_date: Arc::new(OnceLock::new()),
+        }
+    }
+
+    pub(crate) fn set_files(&self, files: Vec<FileMetadata>) {
+        self.files.set(files).expect("must only be called once")
+    }
+
+    pub(crate) fn into_metadata(self) -> DirectoryMetadata {
+        DirectoryMetadata { subdirs: self.subdirs, files: self.files }
+    }
+}
+
+pub(crate) struct RenderContext {
+    pub current_file_idx: usize,
     #[cfg(feature = "syntax-highlighting")]
     pub syntax_highlight_theme: Option<String>,
-    pub current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
-    pub current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
-    pub current_file_idx: usize,
+}
 
-    file_indices_by_date: OnceLock<OrderBiMap>,
+impl RenderContext {
+    pub(crate) fn new(
+        current_file_idx: usize,
+        #[cfg(feature = "syntax-highlighting")] syntax_highlight_theme: Option<String>,
+    ) -> Self {
+        Self { syntax_highlight_theme, current_file_idx }
+    }
+}
+
+pub(crate) struct HinokiContext {
+    pub global: GlobalContext,
+    pub directory: DirectoryContext,
+    pub render: RenderContext,
 }
 
 impl HinokiContext {
     pub(crate) fn new(
-        #[cfg(feature = "syntax-highlighting")] syntax_highlighter: LazySyntaxHighlighter,
-        current_dir_files: Arc<OnceLock<Vec<FileMetadata>>>,
-        current_dir_subdirs: Arc<BTreeMap<String, DirectoryMetadata>>,
-        current_file_idx: usize,
+        global: GlobalContext,
+        directory: DirectoryContext,
+        render: RenderContext,
     ) -> Self {
-        Self {
-            #[cfg(feature = "syntax-highlighting")]
-            syntax_highlighter,
-            #[cfg(feature = "syntax-highlighting")]
-            syntax_highlight_theme: None,
-            current_dir_files,
-            current_dir_subdirs,
-            current_file_idx,
-            file_indices_by_date: OnceLock::new(),
-        }
+        Self { global, directory, render }
+    }
+
+    #[cfg(feature = "syntax-highlighting")]
+    pub(super) fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
+        self.global.syntax_highlighter()
+    }
+
+    #[cfg(feature = "syntax-highlighting")]
+    pub(super) fn syntax_highlight_theme(&self) -> Option<&str> {
+        self.render.syntax_highlight_theme.as_deref()
+    }
+
+    pub(super) fn get_subdir(&self, subdir_name: &str) -> Option<&DirectoryMetadata> {
+        self.directory.subdirs.get(subdir_name)
     }
 
     pub(super) fn current_dir_files(&self) -> &[FileMetadata] {
         loop {
-            if let Some(initialized) = self.current_dir_files.get() {
+            if let Some(initialized) = self.directory.files.get() {
                 return initialized;
             }
 
@@ -69,6 +126,7 @@ impl HinokiContext {
     ) -> &OrderBiMap {
         match ordering {
             Ordering::Date => self
+                .directory
                 .file_indices_by_date
                 .get_or_init(|| OrderBiMap::new(current_dir_files, |file| file.date)),
         }

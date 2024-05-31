@@ -18,7 +18,7 @@ pub(crate) struct SyntaxHighlighter {
 }
 
 impl SyntaxHighlighter {
-    pub(super) fn new() -> anyhow::Result<SyntaxHighlighter> {
+    pub(crate) fn new() -> anyhow::Result<SyntaxHighlighter> {
         let mut syntaxset_builder = SyntaxSet::load_defaults_newlines().into_builder();
         syntaxset_builder.add_from_folder("theme/sublime", true)?;
         let syntaxset = syntaxset_builder.build();
