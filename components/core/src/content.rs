@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    io::{self, BufReader, BufWriter, Read, Write},
+    io::{self, BufReader, BufWriter, Read, Seek, Write},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, OnceLock,
@@ -14,6 +14,7 @@ use indexmap::IndexMap;
 use minijinja::context;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
+use smallvec::SmallVec;
 use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 
@@ -112,14 +113,14 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         let dir_cx = DirectoryContext::new(subdirs);
         let mut idx = 0;
+        // FIXME: Is it possible to make some sort of Flatten FromIterator
+        // adapter that combines with the Result FromIterator impl such that
+        // this doesn't need to be an explicit fold?
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
-            if let Some(file) = self
-                .process_content_file(path.clone(), idx, &dir_cx, write_output)
-                .with_context(|| format!("processing `{path}`"))?
-            {
-                idx += 1;
-                v.push(file);
-            }
+            v.extend(
+                self.process_content_file(path, &mut idx, &dir_cx, write_output)
+                    .with_context(|| format!("processing `{path}`"))?,
+            );
 
             anyhow::Ok(v)
         })?;
@@ -131,23 +132,31 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     #[instrument(skip_all, fields(?content_path))]
     fn process_content_file(
         &self,
-        content_path: Utf8PathBuf,
-        idx: usize,
+        content_path: &Utf8Path,
+        idx: &mut usize,
         dir_cx: &DirectoryContext,
         write_output: WriteOutput,
-    ) -> anyhow::Result<Option<FileMetadata>> {
+    ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
         let source_path =
             content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
 
-        let mut input_file = BufReader::new(File::open(&content_path)?);
+        let mut input_file = BufReader::new(File::open(content_path)?);
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
-        let file_meta = self.file_metadata(source_path.clone(), frontmatter)?;
-        if !self.cx.include_drafts && file_meta.draft {
-            return Ok(None);
+        let mut all_file_meta = self.file_metadata(source_path.clone(), frontmatter)?;
+        if !self.cx.include_drafts {
+            all_file_meta.retain(|file_meta| !file_meta.draft);
         }
 
-        if let WriteOutput::Yes = write_output {
+        if let WriteOutput::No = write_output {
+            // Not really necessary as idx goes completely unused if output
+            // writing is disabled, but maybe that will change with future
+            // refactorings.
+            *idx += all_file_meta.len();
+            return Ok(all_file_meta);
+        }
+
+        let render_file = |file_meta: FileMetadata, idx, input_file| {
             let global_cx = self.cx.template_global_cx.clone();
             let render_cx = RenderContext::new(
                 idx,
@@ -155,17 +164,54 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                 file_meta.syntax_highlight_theme.clone(),
             );
             let hinoki_cx = HinokiContext::new(global_cx, dir_cx.to_owned(), render_cx);
-            self.render_file(file_meta.clone(), hinoki_cx, input_file, content_path)?;
+            self.render_file(file_meta, hinoki_cx, input_file, content_path.to_owned())
+        };
+
+        match all_file_meta.clone().into_inner() {
+            // We want to produce exactly one output file.
+            //
+            // Reuse the already-opened input file.
+            Ok([file_meta]) => {
+                render_file(file_meta, *idx, input_file)?;
+                *idx += 1;
+            }
+            // We want to produce zero or multiple output files.
+            //
+            // Get the input file position and reopen the file at that position
+            // for every render_file call.
+            //
+            // FIXME: This opens the file one more time than necessary, what's
+            // a convenient way around that?
+            //
+            // FIXME: On linux, can open /proc/self/fd/NUM to be persistent
+            // against live modifications and maybe other shenanigans. Also
+            // likely marginally better for perf. See this article:
+            // https://blog.gnoack.org/post/proc-fd-is-not-dup/
+            Err(all_file_meta) => {
+                let pos = input_file
+                    .stream_position()
+                    .context("failed to get end of frontmatter file position")?;
+                drop(input_file);
+
+                for file_meta in all_file_meta {
+                    let mut input_file = BufReader::new(File::open(content_path)?);
+                    input_file
+                        .seek_relative(pos as _)
+                        .context("failed to seek over frontmatter")?;
+                    render_file(file_meta, *idx, input_file)?;
+                    *idx += 1;
+                }
+            }
         }
 
-        Ok(Some(file_meta))
+        Ok(all_file_meta)
     }
 
     fn file_metadata(
         &self,
         source_path: Utf8PathBuf,
         mut frontmatter: ContentFileConfig,
-    ) -> anyhow::Result<FileMetadata> {
+    ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
         for config in self.cx.config.content_file_settings.for_path(&source_path).rev() {
             frontmatter.apply_glob_config(config);
         }
@@ -215,17 +261,20 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             None => source_path.clone(),
         };
 
-        Ok(FileMetadata {
-            draft: frontmatter.draft.unwrap_or(false),
-            slug,
-            path,
-            title,
-            date,
-            extra: frontmatter.extra,
-            template: frontmatter.template,
-            process: frontmatter.process,
-            syntax_highlight_theme: frontmatter.syntax_highlight_theme,
-        })
+        Ok(SmallVec::from_elem(
+            FileMetadata {
+                draft: frontmatter.draft.unwrap_or(false),
+                slug,
+                path,
+                title,
+                date,
+                extra: frontmatter.extra,
+                template: frontmatter.template,
+                process: frontmatter.process,
+                syntax_highlight_theme: frontmatter.syntax_highlight_theme,
+            },
+            1,
+        ))
     }
 
     fn expand_metadata_tpl(

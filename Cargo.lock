@@ -583,6 +583,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "smallvec",
  "syntect",
  "time",
  "toml",
