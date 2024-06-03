@@ -88,8 +88,8 @@ impl HinokiContext {
         global: GlobalContext,
         directory: DirectoryContext,
         render: RenderContext,
-    ) -> Self {
-        Self { global, directory, render }
+    ) -> Arc<Self> {
+        Arc::new(Self { global, directory, render })
     }
 
     #[cfg(feature = "syntax-highlighting")]

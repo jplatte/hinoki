@@ -296,7 +296,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn render_file(
         &self,
         file_meta: FileMetadata,
-        hinoki_cx: HinokiContext,
+        hinoki_cx: Arc<HinokiContext>,
         input_file: BufReader<File>,
         content_path: Utf8PathBuf,
     ) -> anyhow::Result<()> {
@@ -393,7 +393,7 @@ pub(crate) struct FileMetadata {
 fn render(
     file_meta: FileMetadata,
     mut input_file: BufReader<File>,
-    hinoki_cx: HinokiContext,
+    hinoki_cx: Arc<HinokiContext>,
     cx: &ContentProcessorContext<'_>,
     content_path: Utf8PathBuf,
 ) -> anyhow::Result<()> {
@@ -430,12 +430,8 @@ fn render(
 
     if let Some(template) = template {
         let extra = &cx.config.extra;
-        let cx = TemplateContext {
-            content,
-            page: &file_meta,
-            config: context! { extra },
-            hinoki_cx: Arc::new(hinoki_cx),
-        };
+        let cx =
+            TemplateContext { content, page: &file_meta, config: context! { extra }, hinoki_cx };
 
         template.render_to_write(cx, output_file)?;
     } else {
