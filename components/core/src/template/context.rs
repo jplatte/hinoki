@@ -93,12 +93,12 @@ impl HinokiContext {
     }
 
     #[cfg(feature = "syntax-highlighting")]
-    pub(super) fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
+    pub(crate) fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
         self.global.syntax_highlighter()
     }
 
     #[cfg(feature = "syntax-highlighting")]
-    pub(super) fn syntax_highlight_theme(&self) -> Option<&str> {
+    pub(crate) fn syntax_highlight_theme(&self) -> Option<&str> {
         self.render.syntax_highlight_theme.as_deref()
     }
 

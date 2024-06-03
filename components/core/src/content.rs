@@ -351,11 +351,6 @@ impl<'a> ContentProcessorContext<'a> {
         }
     }
 
-    #[cfg(feature = "syntax-highlighting")]
-    fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
-        self.template_global_cx.syntax_highlighter()
-    }
-
     fn output_path(
         &self,
         file_path: &Utf8Path,
@@ -418,14 +413,7 @@ fn render(
 
     #[cfg(feature = "markdown")]
     if let Some(ProcessContent::MarkdownToHtml) = file_meta.process {
-        let syntax_highlight_theme = file_meta.syntax_highlight_theme.as_deref();
-        content = markdown_to_html(
-            &content,
-            #[cfg(feature = "syntax-highlighting")]
-            cx.syntax_highlighter()?,
-            #[cfg(feature = "syntax-highlighting")]
-            syntax_highlight_theme,
-        )?;
+        content = markdown_to_html(&content, &hinoki_cx)?;
     }
 
     if let Some(template) = template {
