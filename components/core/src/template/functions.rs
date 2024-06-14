@@ -18,6 +18,12 @@ pub(super) fn get_file(
     kwargs.assert_all_used()?;
 
     let cx = state.hinoki_cx()?;
+    let Some(current_file_idx) = cx.current_file_idx() else {
+        return Err(minijinja::Error::new(
+            ErrorKind::InvalidOperation,
+            "get_file can't be used in repeat",
+        ));
+    };
     match (prev_by, next_by) {
         (None, None) => Err(minijinja::Error::new(
             ErrorKind::InvalidOperation,
@@ -32,7 +38,7 @@ pub(super) fn get_file(
 
             let current_dir_files = cx.current_dir_files();
             let order_bi_map = cx.get_or_init_file_indices_by(prev_by, current_dir_files);
-            let self_idx_ordered = order_bi_map.original_to_ordered[cx.render.current_file_idx];
+            let self_idx_ordered = order_bi_map.original_to_ordered[current_file_idx];
             if self_idx_ordered > 0 {
                 let prev_idx_original = order_bi_map.ordered_to_original[self_idx_ordered - 1];
                 Ok(Value::from_serialize(&current_dir_files[prev_idx_original]))
@@ -45,7 +51,7 @@ pub(super) fn get_file(
 
             let current_dir_files = cx.current_dir_files();
             let order_bi_map = cx.get_or_init_file_indices_by(next_by, current_dir_files);
-            let self_idx_ordered = order_bi_map.original_to_ordered[cx.render.current_file_idx];
+            let self_idx_ordered = order_bi_map.original_to_ordered[current_file_idx];
             match order_bi_map.ordered_to_original.get(self_idx_ordered + 1) {
                 Some(&next_idx_original) => {
                     Ok(Value::from_serialize(&current_dir_files[next_idx_original]))

@@ -33,6 +33,13 @@ pub(crate) struct ContentFileConfig {
     /// Custom slug for this page, to replace the file basename.
     pub slug: Option<String>,
 
+    /// Render this page once for each item in the iterator.
+    ///
+    /// The string must be a minijinja expression that evaluates to an iterator.
+    ///
+    /// For example: `get_files("directory") | chunks(10)`.
+    pub repeat: Option<String>,
+
     /// Arbitrary additional user-defined data.
     #[serde(default)]
     pub extra: IndexMap<String, toml::Value>,
@@ -63,6 +70,9 @@ impl ContentFileConfig {
         }
         if self.slug.is_none() {
             self.slug = config.slug.clone();
+        }
+        if self.repeat.is_none() {
+            self.repeat = config.repeat.clone();
         }
         apply_extra_defaults(&mut self.extra, &config.extra);
     }

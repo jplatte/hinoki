@@ -63,14 +63,14 @@ impl DirectoryContext {
 }
 
 pub(crate) struct RenderContext {
-    pub current_file_idx: usize,
+    pub current_file_idx: Option<usize>,
     #[cfg(feature = "syntax-highlighting")]
     pub syntax_highlight_theme: Option<String>,
 }
 
 impl RenderContext {
     pub(crate) fn new(
-        current_file_idx: usize,
+        current_file_idx: Option<usize>,
         #[cfg(feature = "syntax-highlighting")] syntax_highlight_theme: Option<String>,
     ) -> Self {
         Self { syntax_highlight_theme, current_file_idx }
@@ -119,6 +119,10 @@ impl HinokiContext {
         }
     }
 
+    pub(super) fn current_file_idx(&self) -> Option<usize> {
+        self.render.current_file_idx
+    }
+
     pub(super) fn get_or_init_file_indices_by(
         &self,
         ordering: Ordering,
@@ -151,10 +155,10 @@ pub(crate) struct TemplateContext<'a> {
     pub page: &'a FileMetadata,
     pub config: minijinja::Value,
     #[serde(rename = "$hinoki_cx", serialize_with = "serialize_hinoki_cx")]
-    pub hinoki_cx: Arc<HinokiContext>,
+    pub hinoki_cx: &'a Arc<HinokiContext>,
 }
 
-fn serialize_hinoki_cx<S: Serializer>(
+pub(crate) fn serialize_hinoki_cx<S: Serializer>(
     cx: &Arc<HinokiContext>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {

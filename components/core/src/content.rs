@@ -24,7 +24,8 @@ use crate::{
     frontmatter::parse_frontmatter,
     metadata::metadata_env,
     template::context::{
-        DirectoryContext, GlobalContext, HinokiContext, RenderContext, TemplateContext,
+        serialize_hinoki_cx, DirectoryContext, GlobalContext, HinokiContext, RenderContext,
+        TemplateContext,
     },
 };
 
@@ -118,7 +119,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         // this doesn't need to be an explicit fold?
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
             v.extend(
-                self.process_content_file(path, &mut idx, &dir_cx, write_output)
+                self.process_content_file(path, &mut idx, dir_cx.clone(), write_output)
                     .with_context(|| format!("processing `{path}`"))?,
             );
 
@@ -134,7 +135,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         &self,
         content_path: &Utf8Path,
         idx: &mut usize,
-        dir_cx: &DirectoryContext,
+        dir_cx: DirectoryContext,
         write_output: WriteOutput,
     ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
         let source_path =
@@ -143,37 +144,22 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let mut input_file = BufReader::new(File::open(content_path)?);
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
-        let mut all_file_meta = self.file_metadata(source_path.clone(), frontmatter)?;
+        let mut all_file_meta =
+            self.all_file_metadata(source_path.clone(), idx, dir_cx, frontmatter)?;
         if !self.cx.include_drafts {
             all_file_meta.retain(|file_meta| !file_meta.draft);
         }
 
         if let WriteOutput::No = write_output {
-            // Not really necessary as idx goes completely unused if output
-            // writing is disabled, but maybe that will change with future
-            // refactorings.
-            *idx += all_file_meta.len();
             return Ok(all_file_meta);
         }
-
-        let render_file = |file_meta: FileMetadata, idx, input_file| {
-            let global_cx = self.cx.template_global_cx.clone();
-            let render_cx = RenderContext::new(
-                idx,
-                #[cfg(feature = "syntax-highlighting")]
-                file_meta.syntax_highlight_theme.clone(),
-            );
-            let hinoki_cx = HinokiContext::new(global_cx, dir_cx.to_owned(), render_cx);
-            self.render_file(file_meta, hinoki_cx, input_file, content_path.to_owned())
-        };
 
         match all_file_meta.clone().into_inner() {
             // We want to produce exactly one output file.
             //
             // Reuse the already-opened input file.
             Ok([file_meta]) => {
-                render_file(file_meta, *idx, input_file)?;
-                *idx += 1;
+                self.render_file(file_meta, input_file, content_path.to_owned())?;
             }
             // We want to produce zero or multiple output files.
             //
@@ -198,8 +184,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                     input_file
                         .seek_relative(pos as _)
                         .context("failed to seek over frontmatter")?;
-                    render_file(file_meta, *idx, input_file)?;
-                    *idx += 1;
+                    self.render_file(file_meta, input_file, content_path.to_owned())?;
                 }
             }
         }
@@ -207,11 +192,19 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         Ok(all_file_meta)
     }
 
-    fn file_metadata(
+    fn all_file_metadata(
         &self,
         source_path: Utf8PathBuf,
+        idx: &mut usize,
+        dir_cx: DirectoryContext,
         mut frontmatter: ContentFileConfig,
     ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
+        #[derive(Serialize)]
+        pub(crate) struct RepeatContext {
+            #[serde(rename = "$hinoki_cx", serialize_with = "serialize_hinoki_cx")]
+            hinoki_cx: Arc<HinokiContext>,
+        }
+
         for config in self.cx.config.content_file_settings.for_path(&source_path).rev() {
             frontmatter.apply_glob_config(config);
         }
@@ -224,24 +217,67 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             );
         }
 
+        let make_hinoki_cx = |idx| {
+            HinokiContext::new(
+                self.cx.template_global_cx.clone(),
+                dir_cx.to_owned(),
+                RenderContext::new(
+                    idx,
+                    #[cfg(feature = "syntax-highlighting")]
+                    frontmatter.syntax_highlight_theme.clone(),
+                ),
+            )
+        };
+
+        if let Some(repeat_expr) = &frontmatter.repeat {
+            let repeat_val = self
+                .cx
+                .template_env
+                .compile_expression(repeat_expr)
+                .context("failed to compile repeat expression")?
+                .eval(RepeatContext { hinoki_cx: make_hinoki_cx(None) })
+                .context("failed to evaluate repeat expression")?;
+
+            let iter = repeat_val.try_iter().context("repeat value is not iterable")?;
+            iter.map(|item| {
+                let repeat = Some(Repeat { item });
+                self.file_metadata(&source_path, idx, &frontmatter, make_hinoki_cx, repeat)
+            })
+            .collect()
+        } else {
+            let meta = self.file_metadata(&source_path, idx, &frontmatter, make_hinoki_cx, None)?;
+            Ok(SmallVec::from_elem(meta, 1))
+        }
+    }
+
+    fn file_metadata(
+        &self,
+        source_path: &Utf8Path,
+        idx: &mut usize,
+        frontmatter: &ContentFileConfig,
+        make_hinoki_cx: impl Fn(Option<usize>) -> Arc<HinokiContext>,
+        repeat: Option<Repeat>,
+    ) -> anyhow::Result<FileMetadata> {
         let source_file_stem = source_path.file_stem().expect("path must have a file name");
+
         let mut metadata_cx = MetadataContext {
-            source_path: &source_path,
+            source_path,
             source_file_stem,
             slug: None,
             title: None,
             date: None,
+            repeat: repeat.as_ref(),
         };
 
         let slug = self
-            .expand_metadata_tpl(frontmatter.slug, &metadata_cx)
+            .expand_metadata_tpl(frontmatter.slug.as_deref(), &metadata_cx)
             .context("expanding slug template")?
             .unwrap_or_else(|| source_file_stem.to_owned());
         let title = self
-            .expand_metadata_tpl(frontmatter.title, &metadata_cx)
+            .expand_metadata_tpl(frontmatter.title.as_deref(), &metadata_cx)
             .context("expanding title template")?;
         let date = self
-            .expand_metadata_tpl(frontmatter.date, &metadata_cx)
+            .expand_metadata_tpl(frontmatter.date.as_deref(), &metadata_cx)
             .context("expanding date template")?
             .filter(|s| !s.is_empty())
             .map(|s| Date::parse(&s, &Iso8601::DATE))
@@ -253,41 +289,47 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         metadata_cx.title = title.as_deref();
         metadata_cx.date = date.as_ref();
 
-        let path = match self.expand_metadata_tpl(frontmatter.path, &metadata_cx)? {
+        let path = match self.expand_metadata_tpl(frontmatter.path.as_deref(), &metadata_cx)? {
             Some(path) => path
                 .strip_prefix('/')
                 .context("paths in frontmatter and config.content must begin with '/'")?
                 .into(),
-            None => source_path.clone(),
+            None => source_path.to_owned(),
         };
 
-        Ok(SmallVec::from_elem(
-            FileMetadata {
-                draft: frontmatter.draft.unwrap_or(false),
-                slug,
-                path,
-                title,
-                date,
-                extra: frontmatter.extra,
-                template: frontmatter.template,
-                process: frontmatter.process,
-                syntax_highlight_theme: frontmatter.syntax_highlight_theme,
-            },
-            1,
-        ))
+        let draft = frontmatter.draft.unwrap_or(false);
+        let extra = frontmatter.extra.clone();
+        let template = frontmatter.template.clone();
+        let process = frontmatter.process;
+
+        let hinoki_cx = make_hinoki_cx(Some(*idx));
+        *idx += 1;
+
+        Ok(FileMetadata {
+            draft,
+            slug,
+            path,
+            title,
+            date,
+            extra,
+            repeat,
+            template,
+            process,
+            hinoki_cx,
+        })
     }
 
     fn expand_metadata_tpl(
         &self,
-        maybe_value: Option<String>,
+        maybe_value: Option<&str>,
         metadata_cx: &MetadataContext<'_>,
     ) -> anyhow::Result<Option<String>> {
         maybe_value
             .map(|value| {
                 if value.contains('{') {
-                    Ok(self.metadata_env.get_template(&value)?.render(metadata_cx)?)
+                    Ok(self.metadata_env.get_template(value)?.render(metadata_cx)?)
                 } else {
-                    Ok(value)
+                    Ok(value.to_owned())
                 }
             })
             .transpose()
@@ -296,7 +338,6 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn render_file(
         &self,
         file_meta: FileMetadata,
-        hinoki_cx: Arc<HinokiContext>,
         input_file: BufReader<File>,
         content_path: Utf8PathBuf,
     ) -> anyhow::Result<()> {
@@ -314,7 +355,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         self.render_scope.spawn(move |_| {
             let _guard = span.enter();
 
-            if let Err(e) = render(file_meta, input_file, hinoki_cx, cx, content_path) {
+            if let Err(e) = render(file_meta, input_file, cx, content_path) {
                 error!("{e:#}");
                 cx.did_error.store(true, Ordering::Relaxed);
             }
@@ -373,6 +414,7 @@ pub(crate) struct FileMetadata {
     pub path: Utf8PathBuf,
     pub title: Option<String>,
     pub date: Option<Date>,
+    pub repeat: Option<Repeat>,
     pub extra: IndexMap<String, toml::Value>,
 
     // further data from frontmatter that should be printed in dump-metadata
@@ -382,13 +424,20 @@ pub(crate) struct FileMetadata {
     #[serde(skip)]
     pub process: Option<ProcessContent>,
     #[serde(skip)]
-    pub syntax_highlight_theme: Option<String>,
+    pub hinoki_cx: Arc<HinokiContext>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct Repeat {
+    /// The current item.
+    item: minijinja::Value,
+    // TODO: length, current index, properties of previous and next like path
+    // TODO: maybe this struct should actually be a custom minijinja Object?
 }
 
 fn render(
     file_meta: FileMetadata,
     mut input_file: BufReader<File>,
-    hinoki_cx: Arc<HinokiContext>,
     cx: &ContentProcessorContext<'_>,
     content_path: Utf8PathBuf,
 ) -> anyhow::Result<()> {
@@ -411,9 +460,11 @@ fn render(
     let mut content = String::new();
     input_file.read_to_string(&mut content)?;
 
+    let hinoki_cx = &file_meta.hinoki_cx;
+
     #[cfg(feature = "markdown")]
     if let Some(ProcessContent::MarkdownToHtml) = file_meta.process {
-        content = markdown_to_html(&content, &hinoki_cx)?;
+        content = markdown_to_html(&content, hinoki_cx)?;
     }
 
     if let Some(template) = template {
@@ -436,6 +487,7 @@ struct MetadataContext<'a> {
     slug: Option<&'a str>,
     title: Option<&'a str>,
     date: Option<&'a Date>,
+    repeat: Option<&'a Repeat>,
 }
 
 #[derive(Clone, Copy)]
