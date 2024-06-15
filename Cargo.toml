@@ -55,6 +55,13 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 # Enable some optimizations for specific dependencies.
 # Otherwise, debug builds are unbearably slow.
 [profile.dev.package]
+adler = { opt-level = 1 }
+aho-corasick = { opt-level = 1 }
+fancy-regex = { opt-level = 1 }
+memchr = { opt-level = 1 }
+miniz_oxide = { opt-level = 1 }
+regex-syntax = { opt-level = 1 }
+regex-automata = { opt-level = 1 }
 syntect = { opt-level = 1 }
 
 # The profile that 'cargo dist' will build with
