@@ -259,10 +259,20 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         make_hinoki_cx: impl Fn(Option<usize>) -> Arc<HinokiContext>,
         repeat: Option<Repeat>,
     ) -> anyhow::Result<FileMetadata> {
+        let source_dir = match source_path.parent() {
+            Some(parent) => {
+                if parent == "" {
+                    parent
+                } else {
+                    &Utf8PathBuf::from("/").join(parent)
+                }
+            }
+            None => Utf8Path::new(""),
+        };
         let source_file_stem = source_path.file_stem().expect("path must have a file name");
 
         let mut metadata_cx = MetadataContext {
-            source_path,
+            source_dir,
             source_file_stem,
             slug: None,
             title: None,
@@ -487,7 +497,7 @@ fn render(
 
 #[derive(Serialize)]
 struct MetadataContext<'a> {
-    source_path: &'a Utf8Path,
+    source_dir: &'a Utf8Path,
     source_file_stem: &'a str,
     slug: Option<&'a str>,
     title: Option<&'a str>,
