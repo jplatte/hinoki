@@ -104,11 +104,14 @@ pub(super) fn load_data(path: String) -> Result<Value, minijinja::Error> {
                  Please recompile with the 'yaml' feature enabled.",
             ));
         }
-        _ => {
-            return Err(make_error(
-                "Unsupported file extension.\
+        Some(ext) => {
+            return Err(make_error(format!(
+                "Unsupported file extension `{ext}`. \
                  Only .toml, .json and .yaml / .yml files can be loaded.",
-            ));
+            )));
+        }
+        None => {
+            return Err(make_error("File must have an extension"));
         }
     };
 
