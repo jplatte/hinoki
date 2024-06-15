@@ -32,8 +32,34 @@ impl GlobalContext {
     }
 
     #[cfg(feature = "syntax-highlighting")]
-    pub(crate) fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
-        self.syntax_highlighter.get_or_try_init(SyntaxHighlighter::new)
+    pub(crate) fn syntax_highlighter(&self) -> Option<&SyntaxHighlighter> {
+        use std::io;
+
+        use syntect::LoadingError;
+        use tracing::debug;
+
+        self.syntax_highlighter
+            .get_or_init(|| match SyntaxHighlighter::new() {
+                Ok(sh) => Some(sh),
+                Err(e) => {
+                    let is_not_found_from_walkdir =
+                        e.downcast_ref::<LoadingError>().is_some_and(|loading_err| {
+                            let LoadingError::WalkDir(walkdir_err) = loading_err else {
+                                return false;
+                            };
+                            let Some(io_error) = walkdir_err.io_error() else { return false };
+                            io_error.kind() == io::ErrorKind::NotFound
+                        });
+
+                    if is_not_found_from_walkdir {
+                        debug!("Failed to initialize syntax highlighter: {e}");
+                    } else {
+                        warn!("Failed to initialize syntax highlighter: {e}");
+                    }
+                    None
+                }
+            })
+            .as_ref()
     }
 }
 
@@ -93,7 +119,7 @@ impl HinokiContext {
     }
 
     #[cfg(feature = "syntax-highlighting")]
-    pub(crate) fn syntax_highlighter(&self) -> anyhow::Result<&SyntaxHighlighter> {
+    pub(crate) fn syntax_highlighter(&self) -> Option<&SyntaxHighlighter> {
         self.global.syntax_highlighter()
     }
 

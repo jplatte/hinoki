@@ -9,7 +9,7 @@ default = ["markdown", "syntax-highlighting", "datetime"]
 # Markdown to HTML support
 markdown = ["dep:pulldown-cmark"]
 # Syntax highlighting for markdown code blocks
-syntax-highlighting = ["markdown", "dep:once_cell", "dep:syntect"]
+syntax-highlighting = ["markdown", "dep:syntect"]
 
 # Filters for formatting timestamps as date / time / datetime
 datetime = ["dep:minijinja-contrib"]
@@ -31,7 +31,6 @@ indexmap = { version = "2.0.2", features = ["serde"] }
 itertools = "0.13.0"
 minijinja = { version = "2.0.1", features = ["custom_syntax", "loader"] }
 minijinja-contrib = { version = "2.0.1", features = ["datetime"], optional = true }
-once_cell = { version = "1.18.0", optional = true }
 pulldown-cmark = { version = "0.11.0", optional = true }
 rayon = "1.8.0"
 serde = { version = "1.0.188", features = ["derive"] }

@@ -582,7 +582,6 @@ dependencies = [
  "itertools",
  "minijinja",
  "minijinja-contrib",
- "once_cell",
  "predicates",
  "pulldown-cmark",
  "rayon",
