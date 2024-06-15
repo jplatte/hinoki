@@ -9,13 +9,13 @@ use std::{
 
 use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
+use file_config::FileConfigDatetime;
 use fs_err::{self as fs, File};
 use indexmap::IndexMap;
 use minijinja::context;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
 use smallvec::SmallVec;
-use time::{format_description::well_known::Iso8601, Date};
 use tracing::{error, instrument, warn};
 
 use crate::{
@@ -27,6 +27,7 @@ use crate::{
         serialize_hinoki_cx, DirectoryContext, GlobalContext, HinokiContext, RenderContext,
         TemplateContext,
     },
+    util::HinokiDatetime,
 };
 
 mod file_config;
@@ -276,18 +277,22 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let title = self
             .expand_metadata_tpl(frontmatter.title.as_deref(), &metadata_cx)
             .context("expanding title template")?;
-        let date = self
-            .expand_metadata_tpl(frontmatter.date.as_deref(), &metadata_cx)
-            .context("expanding date template")?
-            .filter(|s| !s.is_empty())
-            .map(|s| Date::parse(&s, &Iso8601::DATE))
-            .transpose()
-            .context("parsing date")?;
+        let date = match &frontmatter.date {
+            Some(FileConfigDatetime::Bare(dt)) => Some(*dt),
+            Some(FileConfigDatetime::String(s)) => self
+                .expand_metadata_tpl(Some(s), &metadata_cx)
+                .context("expanding date template")?
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse())
+                .transpose()
+                .context("parsing date field")?,
+            None => None,
+        };
 
         // Make slug, title and date available for path templates
         metadata_cx.slug = Some(&slug);
         metadata_cx.title = title.as_deref();
-        metadata_cx.date = date.as_ref();
+        metadata_cx.date = date;
 
         let path = match self.expand_metadata_tpl(frontmatter.path.as_deref(), &metadata_cx)? {
             Some(path) => path
@@ -413,7 +418,7 @@ pub(crate) struct FileMetadata {
     pub slug: String,
     pub path: Utf8PathBuf,
     pub title: Option<String>,
-    pub date: Option<Date>,
+    pub date: Option<HinokiDatetime>,
     pub repeat: Option<Repeat>,
     pub extra: IndexMap<String, toml::Value>,
 
@@ -486,7 +491,7 @@ struct MetadataContext<'a> {
     source_file_stem: &'a str,
     slug: Option<&'a str>,
     title: Option<&'a str>,
-    date: Option<&'a Date>,
+    date: Option<HinokiDatetime>,
     repeat: Option<&'a Repeat>,
 }
 

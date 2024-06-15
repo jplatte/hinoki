@@ -3,6 +3,8 @@ use indexmap::{map::Entry as IndexMapEntry, IndexMap};
 use serde::Deserialize;
 use toml::map::Entry as TomlMapEntry;
 
+use crate::util::HinokiDatetime;
+
 #[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ContentFileConfig {
@@ -28,7 +30,7 @@ pub(crate) struct ContentFileConfig {
     pub title: Option<String>,
 
     /// Page date.
-    pub date: Option<String>,
+    pub date: Option<FileConfigDatetime>,
 
     /// Custom slug for this page, to replace the file basename.
     pub slug: Option<String>,
@@ -43,6 +45,13 @@ pub(crate) struct ContentFileConfig {
     /// Arbitrary additional user-defined data.
     #[serde(default)]
     pub extra: IndexMap<String, toml::Value>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum FileConfigDatetime {
+    Bare(HinokiDatetime),
+    String(String),
 }
 
 impl ContentFileConfig {
