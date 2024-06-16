@@ -145,11 +145,8 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let mut input_file = BufReader::new(File::open(content_path)?);
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
-        let mut all_file_meta =
+        let all_file_meta =
             self.all_file_metadata(source_path.clone(), idx, dir_cx, frontmatter)?;
-        if !self.cx.include_drafts {
-            all_file_meta.retain(|file_meta| !file_meta.draft);
-        }
 
         if let WriteOutput::No = write_output {
             return Ok(all_file_meta);
@@ -208,6 +205,10 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         for config in self.cx.config.content_file_settings.for_path(&source_path).rev() {
             frontmatter.apply_glob_config(config);
+        }
+
+        if !self.cx.include_drafts && frontmatter.draft.unwrap_or(false) {
+            return Ok(SmallVec::new());
         }
 
         #[cfg(not(feature = "syntax-highlighting"))]
