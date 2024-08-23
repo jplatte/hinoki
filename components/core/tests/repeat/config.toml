@@ -1,0 +1,4 @@
+template_dir = "templates"
+
+[extra]
+custom_key = ["foo", "bar"]

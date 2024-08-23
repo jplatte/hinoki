@@ -90,3 +90,8 @@ fn run_test(name: &str, include_drafts: bool) {
 fn basic() {
     run_test("basic", true);
 }
+
+#[test]
+fn repeat() {
+    run_test("repeat", true);
+}
