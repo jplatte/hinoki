@@ -1,3 +1,5 @@
+template_dir = "templates"
+
 [content."*"]
 template = "template.html"
 
