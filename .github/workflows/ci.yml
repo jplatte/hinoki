@@ -67,7 +67,7 @@ jobs:
         with:
           tool: cargo-hack
       - uses: Swatinem/rust-cache@v2
-      - run: cargo hack --each-feature
+      - run: cargo hack check --workspace --each-feature
 
   typos:
     name: Spell Check with Typos
