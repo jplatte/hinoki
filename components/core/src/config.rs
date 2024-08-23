@@ -8,8 +8,17 @@ use crate::content::{ContentFileConfig, ProcessContent};
 #[derive(Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default = "default_content_dir")]
+    content_dir: Utf8PathBuf,
+    #[serde(default = "default_asset_dir")]
+    asset_dir: Utf8PathBuf,
+    #[serde(default = "default_template_dir")]
+    template_dir: Utf8PathBuf,
+    #[serde(default = "default_sublime_dir")]
+    sublime_dir: Utf8PathBuf,
     #[serde(default = "default_output_dir")]
     output_dir: Utf8PathBuf,
+
     #[serde(default, rename = "content")]
     pub content_file_settings: ContentFileSettings,
     #[serde(default)]
@@ -30,19 +39,19 @@ impl Config {
     }
 
     pub fn content_dir(&self) -> Utf8PathBuf {
-        self.project_root().join("content")
+        self.project_root().join(&self.content_dir)
     }
 
     pub fn asset_dir(&self) -> Utf8PathBuf {
-        self.project_root().join("theme/assets")
+        self.project_root().join(&self.asset_dir)
     }
 
     pub fn template_dir(&self) -> Utf8PathBuf {
-        self.project_root().join("theme/templates")
+        self.project_root().join(&self.template_dir)
     }
 
     pub fn sublime_dir(&self) -> Utf8PathBuf {
-        self.project_root().join("theme/sublime")
+        self.project_root().join(&self.sublime_dir)
     }
 
     pub fn output_dir(&self) -> Utf8PathBuf {
@@ -61,6 +70,22 @@ impl Config {
         assert_ne!(self.path, "", "config path must be set at this point");
         self.path.parent().expect("config path must have a parent")
     }
+}
+
+fn default_content_dir() -> Utf8PathBuf {
+    "content".into()
+}
+
+fn default_asset_dir() -> Utf8PathBuf {
+    "theme/assets".into()
+}
+
+fn default_template_dir() -> Utf8PathBuf {
+    "theme/templates".into()
+}
+
+fn default_sublime_dir() -> Utf8PathBuf {
+    "theme/sublime".into()
 }
 
 fn default_output_dir() -> Utf8PathBuf {
