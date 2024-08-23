@@ -9,14 +9,58 @@ use crate::content::{ContentFileConfig, ProcessContent};
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default = "default_output_dir")]
-    pub output_dir: Utf8PathBuf,
+    output_dir: Utf8PathBuf,
     #[serde(default, rename = "content")]
     pub content_file_settings: ContentFileSettings,
     #[serde(default)]
     pub extra: IndexMap<String, toml::Value>,
 
+    /// The path to the config file.
+    ///
+    /// Populated by [`read_config`][crate::read_config] after deserialization.
     #[serde(skip, default)]
-    pub path: Utf8PathBuf,
+    pub(crate) path: Utf8PathBuf,
+}
+
+impl Config {
+    /// Get the path to the config file, as passed to
+    /// [`read_config`][crate::read_config].
+    pub fn path(&self) -> &Utf8Path {
+        &self.path
+    }
+
+    pub fn content_dir(&self) -> Utf8PathBuf {
+        self.project_root().join("content")
+    }
+
+    pub fn asset_dir(&self) -> Utf8PathBuf {
+        self.project_root().join("theme/assets")
+    }
+
+    pub fn template_dir(&self) -> Utf8PathBuf {
+        self.project_root().join("theme/templates")
+    }
+
+    pub fn sublime_dir(&self) -> Utf8PathBuf {
+        self.project_root().join("theme/sublime")
+    }
+
+    pub fn output_dir(&self) -> Utf8PathBuf {
+        self.project_root().join(&self.output_dir)
+    }
+
+    pub fn set_output_dir(&mut self, value: Utf8PathBuf) {
+        self.output_dir = value;
+    }
+
+    /// Get the "project root", that is the parent directory of the config file.
+    ///
+    /// Content, asset and output directory paths from the config are treated
+    /// as relative to this.
+    fn project_root(&self) -> &Utf8Path {
+        assert_ne!(self.path, "", "config path must be set at this point");
+        self.path.parent().expect("config path must have a parent")
+    }
 }
 
 fn default_output_dir() -> Utf8PathBuf {

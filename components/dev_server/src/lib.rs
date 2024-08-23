@@ -6,7 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use camino::Utf8Path;
+use anyhow::Context as _;
+use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use hinoki_core::{build::Build, Config};
 use hyper_util::service::TowerToHyperService;
@@ -32,7 +33,7 @@ pub fn run(config: Config) -> ExitCode {
 
 async fn run_inner(mut config: Config) -> anyhow::Result<()> {
     let output_dir = tempdir()?;
-    config.output_dir = output_dir.path().to_owned().try_into()?;
+    config.set_output_dir(output_dir.path().to_owned().try_into()?);
 
     let build = Build::new(config, true);
     let begin = Instant::now();
@@ -58,10 +59,14 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
 
     const DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
 
-    let current_dir = fs::canonicalize(".")?;
+    let config_path = build.config().path();
+    let config_file_name: Utf8PathBuf =
+        config_path.file_name().context("config path must have a file name")?.into();
+    let project_root =
+        fs::canonicalize(config_path.parent().context("config file path must have a parent")?)?;
 
     let mut debouncer = new_debouncer(DEBOUNCE_DURATION, None, {
-        let current_dir = current_dir.clone();
+        let project_root = project_root.clone();
         move |res: DebounceEventResult| match res {
             Err(errors) => {
                 for error in errors {
@@ -82,7 +87,7 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
                     };
 
                     ev.paths.retain(|path| {
-                        let rel_path = match path.strip_prefix(&current_dir) {
+                        let rel_path = match path.strip_prefix(&project_root) {
                             Ok(p) => p,
                             Err(e) => {
                                 error!("notify event path error: {e}");
@@ -90,7 +95,7 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
                             }
                         };
 
-                        rel_path.starts_with(&build.config().path)
+                        rel_path == config_file_name
                             || rel_path.starts_with("content")
                             || rel_path.starts_with("theme")
                     });
@@ -107,7 +112,7 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
         }
     })?;
 
-    debouncer.watcher().watch(current_dir.as_ref(), RecursiveMode::Recursive)?;
+    debouncer.watcher().watch(project_root.as_ref(), RecursiveMode::Recursive)?;
 
     Ok(debouncer)
 }
@@ -118,7 +123,7 @@ async fn serve(config: &Config) -> anyhow::Result<()> {
     let addr = SocketAddr::from((Ipv6Addr::LOCALHOST, 8000));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    let output_dir: Arc<Utf8Path> = Arc::from(&*config.output_dir);
+    let output_dir: Arc<Utf8Path> = Arc::from(&*config.output_dir());
     loop {
         let (socket, _remote_addr) = listener.accept().await?;
 

@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use camino::Utf8PathBuf;
 use serde::{
     de::{self, IntoDeserializer as _},
     Deserialize, Serialize, Serializer,
@@ -16,19 +17,28 @@ use crate::content::{LazySyntaxHighlighter, SyntaxHighlighter};
 use crate::{
     content::{DirectoryMetadata, FileMetadata},
     util::OrderBiMap,
+    Config,
 };
 
 #[derive(Clone)]
 pub(crate) struct GlobalContext {
+    #[cfg(feature = "syntax-highlighting")]
+    sublime_dir: Utf8PathBuf,
     #[cfg(feature = "syntax-highlighting")]
     syntax_highlighter: LazySyntaxHighlighter,
 }
 
 impl GlobalContext {
     pub(crate) fn new(
+        #[cfg(feature = "syntax-highlighting")] config: &Config,
         #[cfg(feature = "syntax-highlighting")] syntax_highlighter: LazySyntaxHighlighter,
     ) -> Self {
-        Self { syntax_highlighter }
+        Self {
+            #[cfg(feature = "syntax-highlighting")]
+            sublime_dir: config.sublime_dir(),
+            #[cfg(feature = "syntax-highlighting")]
+            syntax_highlighter,
+        }
     }
 
     #[cfg(feature = "syntax-highlighting")]
@@ -39,7 +49,7 @@ impl GlobalContext {
         use tracing::debug;
 
         self.syntax_highlighter
-            .get_or_init(|| match SyntaxHighlighter::new() {
+            .get_or_init(|| match SyntaxHighlighter::new(&self.sublime_dir) {
                 Ok(sh) => Some(sh),
                 Err(e) => {
                     let is_not_found_from_walkdir =
@@ -99,7 +109,11 @@ impl RenderContext {
         current_file_idx: Option<usize>,
         #[cfg(feature = "syntax-highlighting")] syntax_highlight_theme: Option<String>,
     ) -> Self {
-        Self { syntax_highlight_theme, current_file_idx }
+        Self {
+            #[cfg(feature = "syntax-highlighting")]
+            syntax_highlight_theme,
+            current_file_idx,
+        }
     }
 }
 

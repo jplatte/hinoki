@@ -42,8 +42,11 @@ impl Build {
     }
 
     pub fn run(&self) -> ExitCode {
-        fn copy_assets(output_dir_mgr: &OutputDirManager) -> anyhow::Result<()> {
-            WalkDir::new("theme/assets/").into_iter().par_bridge().try_for_each(|entry| {
+        fn copy_assets(
+            assets_dir: &Utf8Path,
+            output_dir_mgr: &OutputDirManager,
+        ) -> anyhow::Result<()> {
+            WalkDir::new(assets_dir).into_iter().par_bridge().try_for_each(|entry| {
                 let entry = entry.context("walking asset directory")?;
                 if entry.file_type().is_dir() {
                     return Ok(());
@@ -55,7 +58,7 @@ impl Build {
                 };
 
                 let rel_path =
-                    utf8_path.strip_prefix("theme/assets/").context("invalid WalkDir item")?;
+                    utf8_path.strip_prefix(assets_dir).context("invalid WalkDir item")?;
                 let output_path = output_dir_mgr.output_path(rel_path, utf8_path)?;
 
                 fs::copy(utf8_path, output_path).context("copying asset")?;
@@ -63,10 +66,13 @@ impl Build {
             })
         }
 
-        let output_dir_mgr = OutputDirManager::new(self.config.output_dir.clone());
+        let assets_dir = self.config.asset_dir();
+        let output_dir_mgr = OutputDirManager::new(self.config.output_dir());
 
-        let (r1, r2) =
-            rayon::join(|| self.run_inner(&output_dir_mgr), || copy_assets(&output_dir_mgr));
+        let (r1, r2) = rayon::join(
+            || self.run_inner(&output_dir_mgr),
+            || copy_assets(&assets_dir, &output_dir_mgr),
+        );
 
         match (r1, r2) {
             (Err(e1), Err(e2)) => {
@@ -85,13 +91,15 @@ impl Build {
 
     fn run_inner(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
         let alloc = Herd::new();
-        let template_env = load_templates(&alloc)?;
+        let template_env = load_templates(&self.config.template_dir(), &alloc)?;
         let cx = ContentProcessorContext::new(
             &self.config,
             self.include_drafts,
             template_env,
             output_dir_mgr,
             GlobalContext::new(
+                #[cfg(feature = "syntax-highlighting")]
+                &self.config,
                 #[cfg(feature = "syntax-highlighting")]
                 self.syntax_highlighter.clone(),
             ),
@@ -113,6 +121,8 @@ pub fn dump(config: Config) -> ExitCode {
         minijinja::Environment::empty(),
         &output_dir_mgr,
         GlobalContext::new(
+            #[cfg(feature = "syntax-highlighting")]
+            &config,
             #[cfg(feature = "syntax-highlighting")]
             LazySyntaxHighlighter::default(),
         ),

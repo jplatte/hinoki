@@ -4,6 +4,7 @@ use std::{
 };
 
 use anyhow::Context as _;
+use camino::Utf8Path;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Tag, TagEnd};
 use syntect::{
     highlighting::{Theme, ThemeSet},
@@ -20,12 +21,12 @@ pub(crate) struct SyntaxHighlighter {
 }
 
 impl SyntaxHighlighter {
-    pub(crate) fn new() -> anyhow::Result<SyntaxHighlighter> {
+    pub(crate) fn new(sublime_dir: &Utf8Path) -> anyhow::Result<SyntaxHighlighter> {
         let mut syntaxset_builder = SyntaxSet::load_defaults_newlines().into_builder();
-        syntaxset_builder.add_from_folder("theme/sublime", true)?;
+        syntaxset_builder.add_from_folder(sublime_dir, true)?;
         let syntaxset = syntaxset_builder.build();
 
-        let themes = ThemeSet::load_from_folder("theme/sublime")
+        let themes = ThemeSet::load_from_folder(sublime_dir)
             .context("Loading syntax highlighting themes")?
             .themes;
 

@@ -13,7 +13,10 @@ pub(crate) mod context;
 pub(crate) mod filters;
 pub(crate) mod functions;
 
-pub(crate) fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environment<'_>> {
+pub(crate) fn load_templates<'a>(
+    template_dir: &Utf8Path,
+    alloc: &'a Herd,
+) -> anyhow::Result<minijinja::Environment<'a>> {
     struct TemplateSource<'b> {
         /// Path relative to the template directory
         rel_path: &'b str,
@@ -25,7 +28,7 @@ pub(crate) fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environm
 
     let (template_source_tx, template_source_rx) = mpsc::channel();
     let read_templates = move || {
-        WalkDir::new("theme/templates/").into_iter().par_bridge().try_for_each_init(
+        WalkDir::new(template_dir).into_iter().par_bridge().try_for_each_init(
             || alloc.get(),
             move |alloc, entry| {
                 let entry = entry?;
@@ -38,7 +41,7 @@ pub(crate) fn load_templates(alloc: &Herd) -> anyhow::Result<minijinja::Environm
                     return Ok(());
                 };
                 let rel_path =
-                    utf8_path.strip_prefix("theme/templates/").context("invalid WalkDir item")?;
+                    utf8_path.strip_prefix(template_dir).context("invalid WalkDir item")?;
 
                 let template_file_content = fs::read_to_string(utf8_path)?;
 

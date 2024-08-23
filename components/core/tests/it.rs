@@ -34,22 +34,18 @@ fn run_test(name: &str, include_drafts: bool) {
     */
 
     let temp = TempDir::new().unwrap().into_persistent();
-    let actual_root = temp.path();
+    let temp_output_dir = temp.path();
 
     let tests_dir = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
 
-    // FIXME: This is racy as soon as another test is added, change core logic
-    // to not rely on the current dir instead
-    env::set_current_dir(tests_dir.join(name)).unwrap();
-
     let mut config = read_config(&tests_dir.join(name).join("config.toml")).unwrap();
-    config.output_dir = Utf8Path::from_path(actual_root).unwrap().to_owned();
+    config.set_output_dir(Utf8Path::from_path(temp_output_dir).unwrap().to_owned());
 
     build(config, include_drafts);
 
     let expected_root = tests_dir.join(format!("{name}.out"));
     let mut expected_iter = WalkDir::new(&expected_root).sort_by_file_name().into_iter();
-    let mut actual_iter = WalkDir::new(actual_root).sort_by_file_name().into_iter();
+    let mut actual_iter = WalkDir::new(temp_output_dir).sort_by_file_name().into_iter();
 
     loop {
         let expected_next = expected_iter.next().transpose().unwrap();
@@ -63,7 +59,7 @@ fn run_test(name: &str, include_drafts: bool) {
         let actual_path = actual_next.as_ref().map(|entry| entry.path());
 
         let expected_path_rel = expected_path.map(|p| p.strip_prefix(&expected_root).unwrap());
-        let actual_path_rel = actual_path.map(|p| p.strip_prefix(actual_root).unwrap());
+        let actual_path_rel = actual_path.map(|p| p.strip_prefix(temp_output_dir).unwrap());
 
         let expected_path_rel = expected_path_rel.unwrap_or_else(|| {
             let missing_file = actual_path_rel.unwrap().display();

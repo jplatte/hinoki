@@ -62,12 +62,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     }
 
     pub(crate) fn run(&self) -> anyhow::Result<()> {
-        self.process_content_dir("content/".into(), WriteOutput::Yes)?;
+        self.process_content_dir(&self.cx.content_dir, WriteOutput::Yes)?;
         Ok(())
     }
 
     pub(crate) fn dump(&self) -> anyhow::Result<()> {
-        let metadata = self.process_content_dir("content/".into(), WriteOutput::No)?;
+        let metadata = self.process_content_dir(&self.cx.content_dir, WriteOutput::No)?;
         println!("{metadata:#?}");
 
         Ok(())
@@ -139,8 +139,10 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         dir_cx: DirectoryContext,
         write_output: WriteOutput,
     ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
-        let source_path =
-            content_path.strip_prefix("content/").context("invalid content_path")?.to_owned();
+        let source_path = content_path
+            .strip_prefix(&self.cx.content_dir)
+            .context("invalid content_path")?
+            .to_owned();
 
         let mut input_file = BufReader::new(File::open(content_path)?);
 
@@ -383,6 +385,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
 pub(crate) struct ContentProcessorContext<'a> {
     config: &'a Config,
+    content_dir: Utf8PathBuf,
     include_drafts: bool,
     template_env: minijinja::Environment<'a>,
     template_global_cx: GlobalContext,
@@ -398,8 +401,10 @@ impl<'a> ContentProcessorContext<'a> {
         output_dir_mgr: &'a OutputDirManager,
         template_global_cx: GlobalContext,
     ) -> Self {
+        let content_dir = config.content_dir();
         Self {
             config,
+            content_dir,
             include_drafts,
             template_env,
             template_global_cx,
