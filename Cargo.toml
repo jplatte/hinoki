@@ -9,10 +9,15 @@ tracing = "0.1.40"
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
-cargo-dist-version = "0.13.2"
-ci = ["github"]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.21.1"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
 installers = []
+# Target platforms to build apps for (Rust target-triple syntax)
 targets = ["x86_64-unknown-linux-gnu"]
+# Which actions to run on pull requests
 pr-run-mode = "plan"
 
 [package]
