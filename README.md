@@ -15,24 +15,26 @@ Feel free to open issues for anything that is unclear!
   - [ ] Other markdown features like tables
 - [x] TOML frontmatter
 - [x] Custom defaults for frontmatter via path patterns
-- [ ] Pagination
+- [ ] Pagination (**In Progress**)
 - [x] Development server
 - [ ] SCSS compilation
 - [ ] Page summaries
 
 ## How to install
 
-At this time, no binaries are being distributed yet.
+Currently, there's linux binaries that you can grab from the [releases page].
 
-Since `hinoki` is written in Rust, you need a Rust toolchain to build it yourself.
-You can use `cargo install --git https://github.com/jplatte/hinoki` to build and install it to `~/.cargo/bin/`.
+You can also build Hinoki from source. Since it is written in Rust, you need a Rust toolchain to build it.
+`cargo install --git https://github.com/jplatte/hinoki` will build and install it to `~/.cargo/bin/`.
+
+[releases page]: https://github.com/jplatte/hinoki/releases
 
 ## How to use
 
-The basic structure for a site you build with `hinoki` is this:
+The default structure for a site you build with `hinoki` is this:
 
 ```sh
-├ config.toml  # Basic configuration
+├ config.toml  # Configuration
 ├ build        # Default output directory
 ├ content      # Content of the site, e.g. markdown files
 └ theme
@@ -88,7 +90,8 @@ This is done using TOML "frontmatter", that is an embedded TOML document at the 
 It is introduced by starting the file with a line that contains exactly `+++`,
 followed by the TOML document which is then terminated with another `+++` line.
 
-Here is the full set of things you can currently configure through frontmatter (or `config.toml`):
+Here is the full set of things you can currently configure through frontmatter
+(as well as the `content` section of `config.toml`):
 
 ```toml
 # Set this page to be a draft.
