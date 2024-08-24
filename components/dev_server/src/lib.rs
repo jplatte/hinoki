@@ -62,11 +62,16 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
     let config_path = build.config().path();
     let config_file_name: Utf8PathBuf =
         config_path.file_name().context("config path must have a file name")?.into();
-    let project_root =
-        fs::canonicalize(config_path.parent().context("config file path must have a parent")?)?;
+    let mut project_root = config_path.parent().context("config file path must have a parent")?;
+    if project_root == "" {
+        // If the config path is only a filename, `parent()` returns an empty path.
+        // We can't pass that to `INotifyWatcher::watch`.
+        project_root = ".".into()
+    }
+    let project_root_canon = fs::canonicalize(project_root)?;
 
     let mut debouncer = new_debouncer(DEBOUNCE_DURATION, None, {
-        let project_root = project_root.clone();
+        let project_root_canon = project_root_canon.clone();
         move |res: DebounceEventResult| match res {
             Err(errors) => {
                 for error in errors {
@@ -87,7 +92,7 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
                     };
 
                     ev.paths.retain(|path| {
-                        let rel_path = match path.strip_prefix(&project_root) {
+                        let rel_path = match path.strip_prefix(&project_root_canon) {
                             Ok(p) => p,
                             Err(e) => {
                                 error!("notify event path error: {e}");
@@ -112,7 +117,7 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
         }
     })?;
 
-    debouncer.watcher().watch(project_root.as_ref(), RecursiveMode::Recursive)?;
+    debouncer.watcher().watch(project_root_canon.as_ref(), RecursiveMode::Recursive)?;
 
     Ok(debouncer)
 }
