@@ -162,12 +162,25 @@ impl fmt::Display for FormatDuration {
             let secs = total_secs % 60;
             return write!(f, "{minutes}min {secs}s");
         }
-
-        let millis = duration.as_millis();
-        if total_secs > 0 {
-            write!(f, "{total_secs}s ")?;
+        if total_secs >= 10 {
+            return write!(f, "{total_secs}s");
         }
 
-        write!(f, "{millis}ms")
+        let subsec_micros = duration.subsec_micros();
+        let millis = subsec_micros / 1000;
+        if total_secs > 0 {
+            let first_decimal = millis / 100;
+            return write!(f, "{total_secs}.{first_decimal}s");
+        }
+        if millis >= 10 {
+            return write!(f, "{millis}ms");
+        }
+        if millis > 0 {
+            let first_decimal = (subsec_micros % 1000) / 100;
+            return write!(f, "{millis}.{first_decimal}ms");
+        }
+
+        // Getting below 10µs is unrealistic, so no need for extra branches
+        write!(f, "{subsec_micros}µs")
     }
 }
