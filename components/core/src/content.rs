@@ -433,8 +433,11 @@ pub(crate) struct FileMetadata {
     pub draft: bool,
     pub slug: String,
     pub path: Utf8PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<HinokiDatetime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub repeat: Option<Repeat>,
     pub extra: IndexMap<String, toml::Value>,
 
@@ -505,9 +508,13 @@ fn render(
 struct MetadataContext<'a> {
     source_dir: &'a Utf8Path,
     source_file_stem: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
     slug: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<HinokiDatetime>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     repeat: Option<&'a Repeat>,
 }
 
