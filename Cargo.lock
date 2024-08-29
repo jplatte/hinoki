@@ -557,7 +557,7 @@ checksum = "d231dfb89cfffdbc30e7fc41579ed6066ad03abda9e567ccafae602b97ec5024"
 
 [[package]]
 name = "hinoki"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "camino",
  "clap",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "hinoki_core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "hinoki_dev_server"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "camino",
