@@ -8,10 +8,10 @@ anyhow.workspace = true
 camino = "1.1.6"
 fs-err.workspace = true
 hinoki_core = { path = "../core" }
-hyper-util = { version = "0.1.2", features = ["http1", "http2", "tokio", "server-auto", "service"] }
+hyper-util = { version = "0.1.2", features = ["http1", "http2", "tokio", "server-auto"] }
 notify = "6.1.1"
 notify-debouncer-full = "0.3.1"
 tempfile = "3.8.1"
 tokio = { version = "1.35.0", features = ["rt-multi-thread"] }
-tower-http = { version = "0.5.0", features = ["fs"] }
 tracing.workspace = true
+zon = { version = "0.0.1", features = ["hyper", "fs"] }
