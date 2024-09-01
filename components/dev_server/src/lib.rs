@@ -10,10 +10,9 @@ use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use hinoki_core::{build::Build, Config};
-use hyper_util::service::TowerToHyperService;
 use tempfile::tempdir;
-use tower_http::services::ServeDir;
 use tracing::{error, info};
+use zon::{fs::ServeDir, ZonToHyperService};
 
 pub fn run(config: Config) -> ExitCode {
     let res = tokio::runtime::Builder::new_multi_thread()
@@ -135,7 +134,7 @@ async fn serve(config: &Config) -> anyhow::Result<()> {
         let output_dir = Arc::clone(&output_dir);
         tokio::spawn(async move {
             let socket = hyper_util::rt::TokioIo::new(socket);
-            let service = TowerToHyperService::new(ServeDir::new(&*output_dir));
+            let service = ZonToHyperService::new(ServeDir::new(&*output_dir));
 
             if let Err(err) =
                 hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
