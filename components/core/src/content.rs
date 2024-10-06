@@ -114,13 +114,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         );
 
         let dir_cx = DirectoryContext::new(subdirs);
-        let mut idx = 0;
+        let mut output_file_idx = 0;
         // FIXME: Is it possible to make some sort of Flatten FromIterator
         // adapter that combines with the Result FromIterator impl such that
         // this doesn't need to be an explicit fold?
         let files = files.iter().try_fold(Vec::new(), |mut v, path| {
             v.extend(
-                self.process_content_file(path, &mut idx, dir_cx.clone(), write_output)
+                self.process_content_file(path, &mut output_file_idx, dir_cx.clone(), write_output)
                     .with_context(|| format!("processing `{path}`"))?,
             );
 
@@ -135,7 +135,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn process_content_file(
         &self,
         content_path: &Utf8Path,
-        idx: &mut usize,
+        dir_output_file_idx: &mut usize,
         dir_cx: DirectoryContext,
         write_output: WriteOutput,
     ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
@@ -148,7 +148,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
         let frontmatter = parse_frontmatter(&mut input_file)?;
         let all_file_meta =
-            self.all_file_metadata(source_path.clone(), idx, dir_cx, frontmatter)?;
+            self.all_file_metadata(source_path.clone(), dir_output_file_idx, dir_cx, frontmatter)?;
 
         if let WriteOutput::No = write_output {
             return Ok(all_file_meta);
@@ -195,7 +195,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn all_file_metadata(
         &self,
         source_path: Utf8PathBuf,
-        idx: &mut usize,
+        dir_output_file_idx: &mut usize,
         dir_cx: DirectoryContext,
         mut frontmatter: ContentFileConfig,
     ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
@@ -221,12 +221,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             );
         }
 
-        let make_hinoki_cx = |idx| {
+        let make_hinoki_cx = |dir_output_file_idx| {
             HinokiContext::new(
                 self.cx.template_global_cx.clone(),
                 dir_cx.to_owned(),
                 RenderContext::new(
-                    idx,
+                    dir_output_file_idx,
                     #[cfg(feature = "syntax-highlighting")]
                     frontmatter.syntax_highlight_theme.clone(),
                 ),
@@ -242,14 +242,39 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                 .eval(RepeatContext { hinoki_cx: make_hinoki_cx(None) })
                 .context("failed to evaluate repeat expression")?;
 
-            let iter = repeat_val.try_iter().context("repeat value is not iterable")?;
-            iter.map(|item| {
-                let repeat = Some(Repeat { item });
-                self.file_metadata(&source_path, idx, &frontmatter, make_hinoki_cx, repeat)
-            })
-            .collect()
+            let repeat_items: Vec<_> =
+                repeat_val.try_iter().context("repeat value is not iterable")?.collect();
+            let total_pages = repeat_items.len();
+
+            repeat_items
+                .into_iter()
+                .enumerate()
+                .map(|(repeat_idx, item)| {
+                    let repeat = Some(Repeat {
+                        item,
+                        // FIXME: Do another pass to propagate these
+                        prev_page: None,
+                        next_page: None,
+                        current_index: repeat_idx,
+                        total_pages,
+                    });
+                    self.file_metadata(
+                        &source_path,
+                        dir_output_file_idx,
+                        &frontmatter,
+                        make_hinoki_cx,
+                        repeat,
+                    )
+                })
+                .collect()
         } else {
-            let meta = self.file_metadata(&source_path, idx, &frontmatter, make_hinoki_cx, None)?;
+            let meta = self.file_metadata(
+                &source_path,
+                dir_output_file_idx,
+                &frontmatter,
+                make_hinoki_cx,
+                None,
+            )?;
             Ok(SmallVec::from_elem(meta, 1))
         }
     }
@@ -257,7 +282,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn file_metadata(
         &self,
         source_path: &Utf8Path,
-        idx: &mut usize,
+        dir_output_file_idx: &mut usize,
         frontmatter: &ContentFileConfig,
         make_hinoki_cx: impl Fn(Option<usize>) -> Arc<HinokiContext>,
         repeat: Option<Repeat>,
@@ -320,8 +345,8 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let template = frontmatter.template.clone();
         let process = frontmatter.process;
 
-        let hinoki_cx = make_hinoki_cx(Some(*idx));
-        *idx += 1;
+        let hinoki_cx = make_hinoki_cx(Some(*dir_output_file_idx));
+        *dir_output_file_idx += 1;
 
         Ok(FileMetadata {
             draft,
@@ -452,10 +477,28 @@ pub(crate) struct FileMetadata {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub(crate) struct RepeatFileMetadata {
+    pub draft: bool,
+    pub slug: String,
+    pub path: Utf8PathBuf,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<HinokiDatetime>,
+    pub extra: IndexMap<String, toml::Value>,
+}
+
+// FIXME: Revisit `skip_serializing_if = "Option::is_none"`
+#[derive(Clone, Debug, Serialize)]
 pub(crate) struct Repeat {
     /// The current item.
     item: minijinja::Value,
-    // TODO: length, current index, properties of previous and next like path
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prev_page: Option<RepeatFileMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_page: Option<RepeatFileMetadata>,
+    current_index: usize,
+    total_pages: usize,
     // TODO: maybe this struct should actually be a custom minijinja Object?
 }
 
