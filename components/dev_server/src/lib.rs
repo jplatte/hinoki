@@ -53,7 +53,7 @@ async fn run_inner(mut config: Config) -> anyhow::Result<()> {
 fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
     use notify::{
         event::{CreateKind, ModifyKind},
-        EventKind, RecursiveMode, Watcher,
+        EventKind, RecursiveMode,
     };
     use notify_debouncer_full::{new_debouncer, DebounceEventResult};
 
@@ -117,7 +117,7 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
         }
     })?;
 
-    debouncer.watcher().watch(project_root_canon.as_ref(), RecursiveMode::Recursive)?;
+    debouncer.watch(project_root_canon, RecursiveMode::Recursive)?;
 
     Ok(debouncer)
 }
