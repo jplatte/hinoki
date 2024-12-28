@@ -44,7 +44,7 @@ where
     buf.clear();
     loop {
         input.read_line(&mut buf)?;
-        if buf.lines().next_back().map_or(false, |l| l.trim_end() == "+++") {
+        if buf.lines().next_back().is_some_and(|l| l.trim_end() == "+++") {
             let frontmatter_end_idx = buf.rfind("+++").expect("already found once");
             buf.truncate(frontmatter_end_idx);
             break;
