@@ -139,10 +139,8 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         dir_cx: DirectoryContext,
         write_output: WriteOutput,
     ) -> anyhow::Result<SmallVec<[FileMetadata; 1]>> {
-        let source_path = content_path
-            .strip_prefix(&self.cx.content_dir)
-            .context("invalid content_path")?
-            .to_owned();
+        let source_path: Arc<Utf8Path> =
+            content_path.strip_prefix(&self.cx.content_dir).context("invalid content_path")?.into();
 
         let mut input_file = BufReader::new(File::open(content_path)?);
 
@@ -194,7 +192,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
     fn all_file_metadata(
         &self,
-        source_path: Utf8PathBuf,
+        source_path: Arc<Utf8Path>,
         dir_output_file_idx: &mut usize,
         dir_cx: DirectoryContext,
         mut frontmatter: ContentFileConfig,
@@ -259,7 +257,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                         total_pages,
                     });
                     self.file_metadata(
-                        &source_path,
+                        source_path.clone(),
                         dir_output_file_idx,
                         &frontmatter,
                         make_hinoki_cx,
@@ -269,7 +267,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
                 .collect()
         } else {
             let meta = self.file_metadata(
-                &source_path,
+                source_path,
                 dir_output_file_idx,
                 &frontmatter,
                 make_hinoki_cx,
@@ -281,7 +279,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
 
     fn file_metadata(
         &self,
-        source_path: &Utf8Path,
+        source_path: Arc<Utf8Path>,
         dir_output_file_idx: &mut usize,
         frontmatter: &ContentFileConfig,
         make_hinoki_cx: impl Fn(Option<usize>) -> Arc<HinokiContext>,
@@ -333,11 +331,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         metadata_cx.date = date;
 
         let path = match self.expand_metadata_tpl(frontmatter.path.as_deref(), &metadata_cx)? {
-            Some(path) => path
-                .strip_prefix('/')
-                .context("paths in frontmatter and config.content must begin with '/'")?
-                .into(),
-            None => source_path.to_owned(),
+            Some(path) => Utf8Path::new(
+                path.strip_prefix('/')
+                    .context("paths in frontmatter and config.content must begin with '/'")?,
+            )
+            .into(),
+            None => source_path,
         };
 
         let draft = frontmatter.draft.unwrap_or(false);
@@ -457,7 +456,7 @@ pub(crate) struct DirectoryMetadata {
 pub(crate) struct FileMetadata {
     pub draft: bool,
     pub slug: String,
-    pub path: Utf8PathBuf,
+    pub path: Arc<Utf8Path>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
