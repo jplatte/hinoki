@@ -570,6 +570,9 @@ impl Object for MetadataContext {
             "slug" => self.slug.clone().map(Into::into),
             "title" => self.title.clone().map(Into::into),
             "date" => self.date.map(minijinja::Value::from_serialize),
+            "year" => self.date.map(|d| format!("{:04}", d.date.year).into()),
+            "month" => self.date.map(|d| format!("{:02}", d.date.month).into()),
+            "day" => self.date.map(|d| format!("{:02}", d.date.day).into()),
             "repeat" => self.repeat.clone(),
             _ => None,
         }
