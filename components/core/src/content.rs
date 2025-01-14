@@ -12,7 +12,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use file_config::FileConfigDatetime;
 use fs_err::{self as fs, File};
 use indexmap::IndexMap;
-use minijinja::context;
+use minijinja::{context, value::Object};
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use serde::Serialize;
 use smallvec::SmallVec;
@@ -285,33 +285,20 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         make_hinoki_cx: impl Fn(Option<usize>) -> Arc<HinokiContext>,
         repeat: Option<Repeat>,
     ) -> anyhow::Result<FileMetadata> {
-        let source_dir = match source_path.parent() {
-            Some(parent) => {
-                if parent == "" {
-                    parent
-                } else {
-                    &Utf8PathBuf::from("/").join(parent)
-                }
-            }
-            None => Utf8Path::new(""),
-        };
-        let source_file_stem = source_path.file_stem().expect("path must have a file name");
-
         let repeat = repeat.map(minijinja::Value::from_serialize);
 
-        let mut metadata_cx = MetadataContext {
-            source_dir,
-            source_file_stem,
+        let mut metadata_cx = Arc::new(MetadataContext {
+            source_path: source_path.clone(),
             slug: None,
             title: None,
             date: None,
             repeat: repeat.clone(),
-        };
+        });
 
         let slug = self
             .expand_metadata_tpl(frontmatter.slug.as_deref(), &metadata_cx)
             .context("expanding slug template")?
-            .unwrap_or_else(|| source_file_stem.into());
+            .unwrap_or_else(|| metadata_cx.source_file_stem().into());
         let title = self
             .expand_metadata_tpl(frontmatter.title.as_deref(), &metadata_cx)
             .context("expanding title template")?;
@@ -328,9 +315,12 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         };
 
         // Make slug, title and date available for path templates
-        metadata_cx.slug = Some(slug.clone());
-        metadata_cx.title = title.clone();
-        metadata_cx.date = date;
+        {
+            let metadata_cx = Arc::make_mut(&mut metadata_cx);
+            metadata_cx.slug = Some(slug.clone());
+            metadata_cx.title = title.clone();
+            metadata_cx.date = date;
+        }
 
         let path = match self.expand_metadata_tpl(frontmatter.path.as_deref(), &metadata_cx)? {
             Some(path) => Utf8Path::new(
@@ -366,12 +356,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
     fn expand_metadata_tpl(
         &self,
         maybe_value: Option<&str>,
-        metadata_cx: &MetadataContext<'_>,
+        metadata_cx: &Arc<MetadataContext>,
     ) -> anyhow::Result<Option<Arc<str>>> {
         maybe_value
             .map(|value| {
                 if value.contains('{') {
-                    Ok(self.metadata_env.get_template(value)?.render(metadata_cx)?.into())
+                    let cx = minijinja::Value::from_dyn_object(metadata_cx.clone());
+                    Ok(self.metadata_env.get_template(value)?.render(cx)?.into())
                 } else {
                     Ok(value.into())
                 }
@@ -548,18 +539,41 @@ fn render(
     Ok(())
 }
 
-#[derive(Serialize)]
-struct MetadataContext<'a> {
-    source_dir: &'a Utf8Path,
-    source_file_stem: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
+#[derive(Clone, Debug)]
+struct MetadataContext {
+    source_path: Arc<Utf8Path>,
     slug: Option<Arc<str>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<Arc<str>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<HinokiDatetime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     repeat: Option<minijinja::Value>,
+}
+
+impl MetadataContext {
+    fn source_dir(&self) -> minijinja::Value {
+        match self.source_path.parent() {
+            None => "".into(),
+            Some(parent) if parent == "" => "".into(),
+            Some(parent) => Utf8PathBuf::from("/").join(parent).into_string().into(),
+        }
+    }
+
+    fn source_file_stem(&self) -> &str {
+        self.source_path.file_stem().expect("path must have a file name")
+    }
+}
+
+impl Object for MetadataContext {
+    fn get_value(self: &Arc<Self>, key: &minijinja::Value) -> Option<minijinja::Value> {
+        match key.as_str()? {
+            "source_dir" => Some(self.source_dir()),
+            "source_file_stem" => Some(self.source_file_stem().into()),
+            "slug" => self.slug.clone().map(Into::into),
+            "title" => self.title.clone().map(Into::into),
+            "date" => self.date.map(minijinja::Value::from_serialize),
+            "repeat" => self.repeat.clone(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
