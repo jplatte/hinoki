@@ -309,7 +309,7 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         let slug = self
             .expand_metadata_tpl(frontmatter.slug.as_deref(), &metadata_cx)
             .context("expanding slug template")?
-            .unwrap_or_else(|| source_file_stem.to_owned());
+            .unwrap_or_else(|| source_file_stem.into());
         let title = self
             .expand_metadata_tpl(frontmatter.title.as_deref(), &metadata_cx)
             .context("expanding title template")?;
@@ -326,8 +326,8 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         };
 
         // Make slug, title and date available for path templates
-        metadata_cx.slug = Some(&slug);
-        metadata_cx.title = title.as_deref();
+        metadata_cx.slug = Some(slug.clone());
+        metadata_cx.title = title.clone();
         metadata_cx.date = date;
 
         let path = match self.expand_metadata_tpl(frontmatter.path.as_deref(), &metadata_cx)? {
@@ -365,13 +365,13 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         &self,
         maybe_value: Option<&str>,
         metadata_cx: &MetadataContext<'_>,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<Option<Arc<str>>> {
         maybe_value
             .map(|value| {
                 if value.contains('{') {
-                    Ok(self.metadata_env.get_template(value)?.render(metadata_cx)?)
+                    Ok(self.metadata_env.get_template(value)?.render(metadata_cx)?.into())
                 } else {
-                    Ok(value.to_owned())
+                    Ok(value.into())
                 }
             })
             .transpose()
@@ -455,10 +455,10 @@ pub(crate) struct DirectoryMetadata {
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct FileMetadata {
     pub draft: bool,
-    pub slug: String,
+    pub slug: Arc<str>,
     pub path: Arc<Utf8Path>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
+    pub title: Option<Arc<str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<HinokiDatetime>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -551,9 +551,9 @@ struct MetadataContext<'a> {
     source_dir: &'a Utf8Path,
     source_file_stem: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    slug: Option<&'a str>,
+    slug: Option<Arc<str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<&'a str>,
+    title: Option<Arc<str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<HinokiDatetime>,
     #[serde(skip_serializing_if = "Option::is_none")]
