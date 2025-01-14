@@ -297,13 +297,15 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
         };
         let source_file_stem = source_path.file_stem().expect("path must have a file name");
 
+        let repeat = repeat.map(minijinja::Value::from_serialize);
+
         let mut metadata_cx = MetadataContext {
             source_dir,
             source_file_stem,
             slug: None,
             title: None,
             date: None,
-            repeat: repeat.as_ref(),
+            repeat: repeat.clone(),
         };
 
         let slug = self
@@ -462,7 +464,7 @@ pub(crate) struct FileMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<HinokiDatetime>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub repeat: Option<Repeat>,
+    pub repeat: Option<minijinja::Value>,
     pub extra: IndexMap<String, toml::Value>,
 
     // further data from frontmatter that should be printed in dump-metadata
@@ -557,7 +559,7 @@ struct MetadataContext<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     date: Option<HinokiDatetime>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    repeat: Option<&'a Repeat>,
+    repeat: Option<minijinja::Value>,
 }
 
 #[derive(Clone, Copy)]
