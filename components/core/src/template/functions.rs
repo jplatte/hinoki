@@ -7,7 +7,7 @@ use camino::Utf8PathBuf;
 use fs_err as fs;
 use minijinja::{value::Kwargs, ErrorKind, Value};
 
-use super::context::{MinijinjaStateExt, Ordering};
+use super::context::{HinokiContext, MinijinjaStateExt, Ordering};
 
 pub(super) fn get_file(
     state: &minijinja::State,
@@ -35,31 +35,28 @@ pub(super) fn get_file(
         )),
         (Some(prev_by), None) => {
             let prev_by = Ordering::from_string(&prev_by)?;
-
-            let current_dir_files = cx.current_dir_files();
-            let order_bi_map = cx.get_or_init_file_indices_by(prev_by, current_dir_files);
-            let self_idx_ordered = order_bi_map.original_to_ordered[current_file_idx];
-            if self_idx_ordered > 0 {
-                let prev_idx_original = order_bi_map.ordered_to_original[self_idx_ordered - 1];
-                Ok(Value::from_serialize(&current_dir_files[prev_idx_original]))
-            } else {
-                Ok(Value::UNDEFINED)
-            }
+            Ok(prev_next_by_impl(current_file_idx, |i| i.checked_sub(1), prev_by, &cx).into())
         }
         (None, Some(next_by)) => {
             let next_by = Ordering::from_string(&next_by)?;
-
-            let current_dir_files = cx.current_dir_files();
-            let order_bi_map = cx.get_or_init_file_indices_by(next_by, current_dir_files);
-            let self_idx_ordered = order_bi_map.original_to_ordered[current_file_idx];
-            match order_bi_map.ordered_to_original.get(self_idx_ordered + 1) {
-                Some(&next_idx_original) => {
-                    Ok(Value::from_serialize(&current_dir_files[next_idx_original]))
-                }
-                None => Ok(Value::UNDEFINED),
-            }
+            Ok(prev_next_by_impl(current_file_idx, |i| i.checked_add(1), next_by, &cx).into())
         }
     }
+}
+
+fn prev_next_by_impl(
+    current_file_idx: usize,
+    make_adjacent_idx: impl FnOnce(usize) -> Option<usize>,
+    ordering: Ordering,
+    cx: &HinokiContext,
+) -> Option<Value> {
+    let current_dir_files = cx.current_dir_files();
+    let order_bi_map = cx.get_or_init_file_indices_by(ordering, current_dir_files);
+    let self_idx_ordered = order_bi_map.original_to_ordered[current_file_idx];
+
+    let adj_idx = make_adjacent_idx(self_idx_ordered)?;
+    let adj_idx_original = *order_bi_map.ordered_to_original.get(adj_idx)?;
+    Some(Value::from_serialize(&current_dir_files[adj_idx_original]))
 }
 
 pub(super) fn get_files(

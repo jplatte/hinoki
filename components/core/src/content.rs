@@ -450,11 +450,8 @@ pub(crate) struct FileMetadata {
     pub draft: bool,
     pub slug: Arc<str>,
     pub path: Arc<Utf8Path>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<Arc<str>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<HinokiDatetime>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub repeat: Option<minijinja::Value>,
     pub extra: IndexMap<String, toml::Value>,
 
@@ -473,21 +470,16 @@ pub(crate) struct RepeatFileMetadata {
     pub draft: bool,
     pub slug: String,
     pub path: Utf8PathBuf,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<HinokiDatetime>,
     pub extra: IndexMap<String, toml::Value>,
 }
 
-// FIXME: Revisit `skip_serializing_if = "Option::is_none"`
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct Repeat {
     /// The current item.
     item: minijinja::Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
     prev_page: Option<RepeatFileMetadata>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     next_page: Option<RepeatFileMetadata>,
     current_index: usize,
     total_pages: usize,
