@@ -64,13 +64,22 @@ pub(super) fn get_files(
     subdir_name: &str,
 ) -> Result<Value, minijinja::Error> {
     let cx = state.hinoki_cx()?;
-    match cx.get_subdir(subdir_name) {
-        Some(subdir_meta) => Ok(Value::from_serialize(subdir_meta.files.get().unwrap())),
-        None => Err(minijinja::Error::new(
-            minijinja::ErrorKind::InvalidOperation,
-            format!("no subdirectory `{subdir_name}`"),
-        )),
-    }
+
+    let files = match subdir_name {
+        "." => cx.current_dir_files(),
+        subdir_name => {
+            let subdir_meta = cx.get_subdir(subdir_name).ok_or_else(|| {
+                minijinja::Error::new(
+                    minijinja::ErrorKind::InvalidOperation,
+                    format!("no subdirectory `{subdir_name}`"),
+                )
+            })?;
+
+            subdir_meta.files.get().unwrap()
+        }
+    };
+
+    Ok(Value::from_serialize(files))
 }
 
 pub(super) fn load_data(path: String) -> Result<Value, minijinja::Error> {
