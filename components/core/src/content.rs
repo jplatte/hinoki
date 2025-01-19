@@ -12,9 +12,10 @@ use camino::{Utf8Path, Utf8PathBuf};
 use file_config::FileConfigDatetime;
 use fs_err::{self as fs, File};
 use indexmap::IndexMap;
+use itertools::Itertools as _;
 use minijinja::{context, value::Object};
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use smallvec::SmallVec;
 use tracing::{error, instrument, warn};
 
@@ -449,6 +450,7 @@ pub(crate) struct DirectoryMetadata {
 pub(crate) struct FileMetadata {
     pub draft: bool,
     pub slug: Arc<str>,
+    #[serde(serialize_with = "serialize_path")]
     pub path: Arc<Utf8Path>,
     pub title: Option<Arc<str>>,
     pub date: Option<HinokiDatetime>,
@@ -463,6 +465,11 @@ pub(crate) struct FileMetadata {
     pub process: Option<ProcessContent>,
     #[serde(skip)]
     pub hinoki_cx: Arc<HinokiContext>,
+}
+
+fn serialize_path<S: Serializer>(path: &Utf8Path, serializer: S) -> Result<S::Ok, S::Error> {
+    // Print with '/' as separator, even on Windows.
+    serializer.serialize_str(&format!("/{}", path.iter().format("/")))
 }
 
 #[derive(Clone, Debug, Serialize)]
