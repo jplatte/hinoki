@@ -36,7 +36,7 @@ impl OutputDirManager {
         source_path: &Utf8Path,
     ) -> anyhow::Result<Utf8PathBuf> {
         let mut output_path = self.output_dir.join(output_rel_path);
-        if output_path.ends_with("/") {
+        if output_path.as_str().ends_with("/") {
             output_path.push("index.html");
         }
 
