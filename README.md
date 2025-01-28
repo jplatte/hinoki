@@ -70,7 +70,10 @@ slug = "{source_file_stem|strip_date_prefix}"
 # The path template will be expanded last (regardless of its position in the
 # frontmatter / defaults) and can use `slug`, `date` and `title`, possibly more
 # other fields in the future.
-path = "/{date|dateformat(format='[year]/[month]')}/{slug}/index.html"
+#
+# If the path ends in `/`, an `index.html` file will be written to that
+# directory.
+path = "/{date|dateformat(format='[year]/[month]')}/{slug}/"
 
 # This section is for arbitrary user-defined data.
 #
