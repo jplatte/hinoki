@@ -552,7 +552,7 @@ impl MetadataContext {
         match self.source_path.parent() {
             None => "".into(),
             Some(parent) if parent == "" => "".into(),
-            Some(parent) => Utf8PathBuf::from("/").join(parent).into_string().into(),
+            Some(parent) => format!("/{}", parent.iter().format("/")).into(),
         }
     }
 
