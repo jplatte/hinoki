@@ -469,7 +469,13 @@ pub(crate) struct FileMetadata {
 
 fn serialize_path<S: Serializer>(path: &Utf8Path, serializer: S) -> Result<S::Ok, S::Error> {
     // Print with '/' as separator, even on Windows.
-    serializer.serialize_str(&format!("/{}", path.iter().format("/")))
+    let mut s = format!("/{}", path.iter().format("/"));
+    // path.iter() does not return an empty final segment if the path ends in
+    // `/`, but we want to preserve the trailing slash
+    if path.as_str().ends_with("/") {
+        s.push('/');
+    }
+    serializer.serialize_str(&s)
 }
 
 #[derive(Clone, Debug, Serialize)]
