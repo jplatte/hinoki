@@ -1,9 +1,9 @@
-use std::{process::ExitCode, sync::atomic::Ordering};
+use std::{io::ErrorKind, process::ExitCode, sync::atomic::Ordering};
 
 use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::Utf8Path;
-use fs_err::{self as fs};
+use fs_err as fs;
 use rayon::iter::{ParallelBridge as _, ParallelIterator as _};
 use tracing::{error, warn};
 use walkdir::WalkDir;
@@ -66,8 +66,13 @@ impl Build {
             })
         }
 
+        let output_dir = self.config.output_dir();
+        if let Err(e) = init_output_directory(&output_dir) {
+            error!("failed to initialize output directory: {e:#}");
+        }
+
         let assets_dir = self.config.asset_dir();
-        let output_dir_mgr = OutputDirManager::new(self.config.output_dir());
+        let output_dir_mgr = OutputDirManager::new(output_dir);
 
         let (r1, r2) = rayon::join(
             || self.run_inner(&output_dir_mgr),
@@ -138,4 +143,28 @@ pub fn dump(config: Config) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn init_output_directory(output_dir: &Utf8Path) -> anyhow::Result<()> {
+    let read_dir = match fs::read_dir(output_dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            fs::create_dir_all(output_dir)?;
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    for entry in read_dir {
+        let path = entry?.path();
+        fs::remove_dir_all(&path).or_else(|e| {
+            if e.kind() == ErrorKind::NotADirectory {
+                fs::remove_file(&path)
+            } else {
+                Err(e)
+            }
+        })?;
+    }
+
+    Ok(())
 }
