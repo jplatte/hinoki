@@ -5,7 +5,7 @@ use std::fmt::Display;
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
-use minijinja::{value::Kwargs, ErrorKind, Value};
+use minijinja::{ErrorKind, Value, value::Kwargs};
 
 use super::context::{HinokiContext, MinijinjaStateExt, Ordering};
 

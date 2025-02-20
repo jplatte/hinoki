@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use anyhow::{format_err, Context as _};
+use anyhow::{Context as _, format_err};
 use bumpalo_herd::Herd;
 use camino::Utf8Path;
 use fs_err::{self as fs};

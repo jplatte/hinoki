@@ -1,7 +1,7 @@
 format_code_in_doc_comments = true
 imports_granularity = "Crate"
 newline_style = "Unix"
+single_line_if_else_max_width = 50
 use_field_init_shorthand = true
 use_small_heuristics = "Max"
 wrap_comments = true
-style_edition = "2021"

@@ -1,6 +1,6 @@
 use std::env;
 
-use assert_fs::{assert::PathAssert, fixture::PathChild, TempDir};
+use assert_fs::{TempDir, assert::PathAssert, fixture::PathChild};
 use camino::Utf8Path;
 use hinoki_core::{build::build, read_config};
 use walkdir::WalkDir;

@@ -9,7 +9,7 @@ use std::{
 use anyhow::Context as _;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use hinoki_core::{build::Build, Config};
+use hinoki_core::{Config, build::Build};
 use hyper_util::service::TowerToHyperService;
 use tempfile::tempdir;
 use tower_http::services::ServeDir;
@@ -52,10 +52,10 @@ async fn run_inner(mut config: Config) -> anyhow::Result<()> {
 /// Dropping the returned value stops the watcher thread.
 fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
     use notify::{
-        event::{CreateKind, ModifyKind},
         EventKind, RecursiveMode,
+        event::{CreateKind, ModifyKind},
     };
-    use notify_debouncer_full::{new_debouncer, DebounceEventResult};
+    use notify_debouncer_full::{DebounceEventResult, new_debouncer};
 
     const DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
 

@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use indexmap::{map::Entry as IndexMapEntry, IndexMap};
+use indexmap::{IndexMap, map::Entry as IndexMapEntry};
 use serde::Deserialize;
 use toml::map::Entry as TomlMapEntry;
 

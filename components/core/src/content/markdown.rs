@@ -1,4 +1,4 @@
-use pulldown_cmark::{html::push_html, Options, Parser};
+use pulldown_cmark::{Options, Parser, html::push_html};
 
 use crate::template::context::HinokiContext;
 

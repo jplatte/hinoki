@@ -1,7 +1,7 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use indexmap::{indexmap, IndexMap};
-use serde::{de, Deserialize, Deserializer};
+use indexmap::{IndexMap, indexmap};
+use serde::{Deserialize, Deserializer, de};
 
 use crate::content::{ContentFileConfig, ProcessContent};
 

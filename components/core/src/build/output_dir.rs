@@ -3,7 +3,7 @@ use std::{
     sync::{Mutex, RwLock},
 };
 
-use anyhow::{bail, Context as _};
+use anyhow::{Context as _, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 

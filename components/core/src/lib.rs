@@ -1,6 +1,6 @@
 use std::io;
 
-use anyhow::{anyhow, Context as _};
+use anyhow::{Context as _, anyhow};
 use camino::Utf8Path;
 use fs_err as fs;
 use tracing::warn;

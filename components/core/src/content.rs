@@ -2,8 +2,8 @@ use std::{
     collections::BTreeMap,
     io::{self, BufReader, BufWriter, Read, Seek, Write},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -25,8 +25,8 @@ use crate::{
     frontmatter::parse_frontmatter,
     metadata::metadata_env,
     template::context::{
-        serialize_hinoki_cx, DirectoryContext, GlobalContext, HinokiContext, RenderContext,
-        TemplateContext,
+        DirectoryContext, GlobalContext, HinokiContext, RenderContext, TemplateContext,
+        serialize_hinoki_cx,
     },
     util::HinokiDatetime,
 };

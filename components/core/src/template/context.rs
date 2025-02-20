@@ -7,17 +7,17 @@ use std::{
 
 use camino::Utf8PathBuf;
 use serde::{
-    de::{self, IntoDeserializer as _},
     Deserialize, Serialize, Serializer,
+    de::{self, IntoDeserializer as _},
 };
 use tracing::warn;
 
 #[cfg(feature = "syntax-highlighting")]
 use crate::content::{LazySyntaxHighlighter, SyntaxHighlighter};
 use crate::{
+    Config,
     content::{DirectoryMetadata, FileMetadata},
     util::OrderBiMap,
-    Config,
 };
 
 #[derive(Clone)]
