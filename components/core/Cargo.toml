@@ -1,7 +1,7 @@
 [package]
 name = "hinoki_core"
 version.workspace = true
-edition = "2021"
+edition = "2024"
 
 [features]
 default = ["markdown", "syntax-highlighting", "datetime"]

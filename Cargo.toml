@@ -27,7 +27,7 @@ pr-run-mode = "plan"
 name = "hinoki"
 description = "A simple, yet very flexible static site generator."
 version.workspace = true
-edition = "2021"
+edition = "2024"
 license = "AGPL-3.0-only"
 repository = "https://github.com/jplatte/hinoki"
 
