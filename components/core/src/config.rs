@@ -32,12 +32,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Get the path to the config file, as passed to
-    /// [`read_config`][crate::read_config].
-    pub fn path(&self) -> &Utf8Path {
-        &self.path
-    }
-
     pub fn content_dir(&self) -> Utf8PathBuf {
         self.project_root().join(&self.content_dir)
     }
@@ -56,6 +50,20 @@ impl Config {
 
     pub fn output_dir(&self) -> Utf8PathBuf {
         self.project_root().join(&self.output_dir)
+    }
+
+    /// Get a copy of all the paths that are inputs of the build.
+    ///
+    /// Used by hinoki-dev-server to classify changes within the project root.
+    pub fn inputs(&self) -> Inputs {
+        Inputs {
+            project_root: self.project_root().to_owned(),
+            config_file: self.path.file_name().expect("config file must have a name").to_owned(),
+            content_dir: self.content_dir.clone(),
+            asset_dir: self.asset_dir.clone(),
+            template_dir: self.template_dir.clone(),
+            sublime_dir: self.sublime_dir.clone(),
+        }
     }
 
     pub fn set_output_dir(&mut self, value: Utf8PathBuf) {
@@ -139,4 +147,25 @@ impl<'de> Deserialize<'de> for ContentFileSettings {
         let map: IndexMap<String, ContentFileConfig> = IndexMap::deserialize(deserializer)?;
         Self::from_map(map).map_err(de::Error::custom)
     }
+}
+
+/// Inputs to a hinoki project.
+pub struct Inputs {
+    /// The "project root", i.e. the parent directory of the config file.
+    pub project_root: Utf8PathBuf,
+
+    /// The name of the config file.
+    pub config_file: String,
+
+    /// The content directory, relative to the project root.
+    pub content_dir: Utf8PathBuf,
+
+    /// The asset directory, relative to the project root.
+    pub asset_dir: Utf8PathBuf,
+
+    /// The template directory, relative to the project root.
+    pub template_dir: Utf8PathBuf,
+
+    /// The sublime syntax directory, relative to the project root.
+    pub sublime_dir: Utf8PathBuf,
 }

@@ -6,10 +6,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context as _;
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use fs_err as fs;
-use hinoki_core::{Config, build::Build};
+use hinoki_core::{
+    build::Build,
+    config::{Config, Inputs},
+};
 use hyper_util::service::TowerToHyperService;
 use tempfile::tempdir;
 use tower_http::services::ServeDir;
@@ -59,13 +61,19 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
 
     const DEBOUNCE_DURATION: Duration = Duration::from_millis(100);
 
-    let config_path = build.config().path();
-    let config_file_name: Utf8PathBuf =
-        config_path.file_name().context("config path must have a file name")?.into();
-    let mut project_root = config_path.parent().context("config file path must have a parent")?;
+    #[rustfmt::skip] // buggy, can remove when Inputs gets another field
+    let Inputs {
+        mut project_root,
+        config_file,
+        content_dir,
+        asset_dir,
+        template_dir,
+        sublime_dir,
+    } = build.config().inputs();
+
     if project_root == "" {
         // If the config path is only a filename, `parent()` returns an empty path.
-        // We can't pass that to `INotifyWatcher::watch`.
+        // We can't pass that to `fs::canonicalize`.
         project_root = ".".into()
     }
     let project_root_canon = fs::canonicalize(project_root)?;
@@ -100,9 +108,11 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
                             }
                         };
 
-                        rel_path == config_file_name
-                            || rel_path.starts_with("content")
-                            || rel_path.starts_with("theme")
+                        *rel_path.as_os_str() == *config_file
+                            || rel_path.starts_with(&content_dir)
+                            || rel_path.starts_with(&asset_dir)
+                            || rel_path.starts_with(&template_dir)
+                            || rel_path.starts_with(&sublime_dir)
                     });
 
                     !ev.paths.is_empty()

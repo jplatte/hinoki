@@ -6,7 +6,7 @@ use fs_err as fs;
 use tracing::warn;
 
 pub mod build;
-mod config;
+pub mod config;
 mod content;
 mod frontmatter;
 mod metadata;
