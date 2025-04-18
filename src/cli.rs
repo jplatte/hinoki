@@ -12,9 +12,11 @@ pub struct CliArgs {
 
 #[derive(clap::Subcommand)]
 pub enum Command {
+    /// Build the site.
     Build(BuildArgs),
+    /// Dump site metadata (for debugging purposes).
     DumpMetadata,
-    /// Start a development server [not implemented yet].
+    /// Start a development server.
     Serve,
 }
 
