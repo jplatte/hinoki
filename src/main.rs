@@ -8,9 +8,7 @@ use hinoki_core::{
 use tracing::error;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-mod cli;
-
-use self::cli::{CliArgs, Command};
+use hinoki_cli::{CliArgs, Command};
 
 fn main() -> ExitCode {
     tracing_subscriber::registry()
@@ -34,9 +32,9 @@ fn main() -> ExitCode {
         Command::Build(args) => build(config, args.include_drafts),
         Command::DumpMetadata => dump(config),
         #[cfg(feature = "dev-server")]
-        Command::Serve => hinoki_dev_server::run(config),
+        Command::Serve(args) => hinoki_dev_server::run(config, args),
         #[cfg(not(feature = "dev-server"))]
-        Command::Serve => {
+        Command::Serve(_) => {
             error!(
                 "hinoki was compiled without support for this command.\
                  Please recompile with the 'dev-server' feature enabled."

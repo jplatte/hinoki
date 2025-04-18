@@ -1,0 +1,8 @@
+[package]
+name = "hinoki_cli"
+edition = "2024"
+version.workspace = true
+
+[dependencies]
+camino.workspace = true
+clap.workspace = true

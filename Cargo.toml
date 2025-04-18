@@ -7,7 +7,10 @@ version = "0.1.2"
 [workspace.dependencies]
 anyhow = "1.0.75"
 camino = "1.1.6"
+clap = { version = "4.5.36", features = ["derive"] }
 fs-err = "3.0.0"
+hinoki_cli = { path = "components/cli" }
+hinoki_core = { path = "components/core", default-features = false }
 tracing = "0.1.40"
 
 # Config for 'cargo dist'
@@ -54,8 +57,9 @@ dev-server = ["dep:hinoki_dev_server"]
 
 [dependencies]
 camino = { workspace = true, features = ["serde"] }
-clap = { version = "4.4.3", features = ["derive"] }
-hinoki_core = { path = "components/core", default-features = false }
+clap.workspace = true
+hinoki_cli.workspace = true
+hinoki_core.workspace = true
 hinoki_dev_server = { path = "components/dev_server", optional = true }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

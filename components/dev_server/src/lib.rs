@@ -8,6 +8,7 @@ use std::{
 
 use camino::Utf8Path;
 use fs_err as fs;
+use hinoki_cli::ServeArgs;
 use hinoki_core::{
     build::Build,
     config::{Config, Inputs},
@@ -17,12 +18,12 @@ use tempfile::tempdir;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
 
-pub fn run(config: Config) -> ExitCode {
+pub fn run(config: Config, args: ServeArgs) -> ExitCode {
     let res = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed building the Runtime")
-        .block_on(run_inner(config));
+        .block_on(run_inner(config, args));
 
     match res {
         Ok(()) => ExitCode::SUCCESS,
@@ -33,7 +34,7 @@ pub fn run(config: Config) -> ExitCode {
     }
 }
 
-async fn run_inner(mut config: Config) -> anyhow::Result<()> {
+async fn run_inner(mut config: Config, args: ServeArgs) -> anyhow::Result<()> {
     let output_dir = tempdir()?;
     config.set_output_dir(output_dir.path().to_owned().try_into()?);
 
@@ -44,7 +45,7 @@ async fn run_inner(mut config: Config) -> anyhow::Result<()> {
 
     let config = build.config().clone();
     let _watch_guard = start_watch(build)?;
-    serve(&config).await?;
+    serve(&config, args).await?;
 
     Ok(())
 }
@@ -132,11 +133,18 @@ fn start_watch(build: Build) -> anyhow::Result<impl Drop> {
     Ok(debouncer)
 }
 
-async fn serve(config: &Config) -> anyhow::Result<()> {
-    info!("Starting development server on http://localhost:8000");
+async fn serve(config: &Config, args: ServeArgs) -> anyhow::Result<()> {
+    let url = format!("http://localhost:{}", args.port);
+    info!("Starting development server on {url}");
 
-    let addr = SocketAddr::from((Ipv6Addr::LOCALHOST, 8000));
+    let addr = SocketAddr::from((Ipv6Addr::LOCALHOST, args.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    if args.open {
+        if let Err(err) = open::that(url) {
+            error!("Failed to open site: {err}");
+        }
+    }
 
     let output_dir: Arc<Utf8Path> = Arc::from(&*config.output_dir());
     loop {

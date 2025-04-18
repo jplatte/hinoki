@@ -6,11 +6,14 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 camino = "1.1.6"
+clap.workspace = true
 fs-err.workspace = true
-hinoki_core = { path = "../core" }
+hinoki_cli.workspace = true
+hinoki_core.workspace = true
 hyper-util = { version = "0.1.2", features = ["http1", "http2", "tokio", "server-auto", "service"] }
 notify = "8.0.0"
 notify-debouncer-full = "0.5.0"
+open = "5.3.2"
 tempfile = "3.8.1"
 tokio = { version = "1.35.0", features = ["rt-multi-thread"] }
 tower-http = { version = "0.6.1", features = ["fs"] }
