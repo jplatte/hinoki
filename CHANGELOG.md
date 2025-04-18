@@ -1,4 +1,4 @@
-# 0.2.0 (Unreleased)
+# v0.2.0
 
 - Clear the output directory as the first step of `hinoki build`
 - Change conditionally-defined template variables to always-defined (absence of
