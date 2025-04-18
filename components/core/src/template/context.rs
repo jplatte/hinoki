@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "syntax-highlighting")]
 use camino::Utf8PathBuf;
 use serde::{
     Deserialize, Serialize, Serializer,
@@ -13,9 +14,11 @@ use serde::{
 use tracing::warn;
 
 #[cfg(feature = "syntax-highlighting")]
-use crate::content::{LazySyntaxHighlighter, SyntaxHighlighter};
 use crate::{
     Config,
+    content::{LazySyntaxHighlighter, SyntaxHighlighter},
+};
+use crate::{
     content::{DirectoryMetadata, FileMetadata},
     util::OrderBiMap,
 };
