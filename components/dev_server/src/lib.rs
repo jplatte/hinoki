@@ -140,10 +140,10 @@ async fn serve(config: &Config, args: ServeArgs) -> anyhow::Result<()> {
     let addr = SocketAddr::from((Ipv6Addr::LOCALHOST, args.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    if args.open {
-        if let Err(err) = open::that(url) {
-            error!("Failed to open site: {err}");
-        }
+    if args.open
+        && let Err(err) = open::that(url)
+    {
+        error!("Failed to open site: {err}");
     }
 
     let output_dir: Arc<Utf8Path> = Arc::from(&*config.output_dir());

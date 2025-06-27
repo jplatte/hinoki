@@ -55,16 +55,11 @@ impl GlobalContext {
             .get_or_init(|| match SyntaxHighlighter::new(&self.sublime_dir) {
                 Ok(sh) => Some(sh),
                 Err(e) => {
-                    let is_not_found_from_walkdir =
-                        e.downcast_ref::<LoadingError>().is_some_and(|loading_err| {
-                            let LoadingError::WalkDir(walkdir_err) = loading_err else {
-                                return false;
-                            };
-                            let Some(io_error) = walkdir_err.io_error() else { return false };
-                            io_error.kind() == io::ErrorKind::NotFound
-                        });
-
-                    if is_not_found_from_walkdir {
+                    if let Some(loading_err) = e.downcast_ref::<LoadingError>()
+                        && let LoadingError::WalkDir(walkdir_err) = loading_err
+                        && let Some(io_error) = walkdir_err.io_error()
+                        && io_error.kind() == io::ErrorKind::NotFound
+                    {
                         debug!("Failed to initialize syntax highlighter: {e}");
                     } else {
                         warn!("Failed to initialize syntax highlighter: {e}");
