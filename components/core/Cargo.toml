@@ -37,7 +37,7 @@ serde = { version = "1.0.188", features = ["derive", "rc"] }
 serde_json = { version = "1.0.107", optional = true }
 serde_yaml = { version = "0.9.25", optional = true }
 smallvec = "1.13.2"
-toml = "0.9.4"
+toml = { version = "0.9.4", default-features = false, features = ["parse", "serde"] }
 tracing = "0.1.37"
 walkdir = "2.4.0"
 
