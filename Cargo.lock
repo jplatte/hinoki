@@ -594,6 +594,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "walkdir",
+ "winnow",
 ]
 
 [[package]]
@@ -2045,6 +2046,9 @@ name = "winnow"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3edebf492c8125044983378ecb5766203ad3b4c2f7a922bd7dd207f6d443e95"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "wit-bindgen-rt"

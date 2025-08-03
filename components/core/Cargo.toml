@@ -3,6 +3,9 @@ name = "hinoki_core"
 version.workspace = true
 edition = "2024"
 
+[package.metadata.cargo-machete]
+ignored = ["winnow"]
+
 [features]
 default = ["markdown", "syntax-highlighting", "datetime"]
 
@@ -40,6 +43,8 @@ smallvec = "1.13.2"
 toml = { version = "0.9.4", default-features = false, features = ["parse", "serde"] }
 tracing = "0.1.37"
 walkdir = "2.4.0"
+# not used directly, but winnow's simd feature should help toml's parsing speed
+winnow = { version = "0.7.12", features = ["simd"] }
 
 [dependencies.syntect]
 version = "5.1.0"
