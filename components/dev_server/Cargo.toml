@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow.workspace = true
 camino = "1.1.6"
-clap.workspace = true
 fs-err.workspace = true
 hinoki_cli.workspace = true
 hinoki_core.workspace = true

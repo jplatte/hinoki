@@ -43,7 +43,6 @@ yaml = ["hinoki_core/yaml"]
 dev-server = ["dep:hinoki_dev_server"]
 
 [dependencies]
-camino = { workspace = true, features = ["serde"] }
 clap.workspace = true
 hinoki_cli.workspace = true
 hinoki_core.workspace = true
