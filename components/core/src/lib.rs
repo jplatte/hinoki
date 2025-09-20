@@ -5,6 +5,7 @@ use camino::Utf8Path;
 use fs_err as fs;
 use tracing::warn;
 
+mod assets;
 pub mod build;
 pub mod config;
 mod content;

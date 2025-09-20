@@ -1,16 +1,14 @@
 use std::{io::ErrorKind, process::ExitCode, sync::atomic::Ordering};
 
-use anyhow::Context as _;
 use bumpalo_herd::Herd;
 use camino::Utf8Path;
 use fs_err as fs;
-use rayon::iter::{ParallelBridge as _, ParallelIterator as _};
-use tracing::{error, warn};
-use walkdir::WalkDir;
+use tracing::error;
 
 #[cfg(feature = "syntax-highlighting")]
 use crate::content::LazySyntaxHighlighter;
 use crate::{
+    assets::{AssetsProcessor, AssetsProcessorContext},
     config::Config,
     content::{ContentProcessor, ContentProcessorContext},
     template::{context::GlobalContext, load_templates},
@@ -42,41 +40,16 @@ impl Build {
     }
 
     pub fn run(&self) -> ExitCode {
-        fn copy_assets(
-            assets_dir: &Utf8Path,
-            output_dir_mgr: &OutputDirManager,
-        ) -> anyhow::Result<()> {
-            WalkDir::new(assets_dir).into_iter().par_bridge().try_for_each(|entry| {
-                let entry = entry.context("walking asset directory")?;
-                if entry.file_type().is_dir() {
-                    return Ok(());
-                }
-
-                let Some(utf8_path) = Utf8Path::from_path(entry.path()) else {
-                    warn!("Skipping non-utf8 file `{}`", entry.path().display());
-                    return Ok(());
-                };
-
-                let rel_path =
-                    utf8_path.strip_prefix(assets_dir).context("invalid WalkDir item")?;
-                let output_path = output_dir_mgr.output_path(rel_path, utf8_path)?;
-
-                fs::copy(utf8_path, output_path).context("copying asset")?;
-                Ok(())
-            })
-        }
-
         let output_dir = self.config.output_dir();
         if let Err(e) = init_output_directory(&output_dir) {
             error!("failed to initialize output directory: {e:#}");
         }
 
-        let assets_dir = self.config.asset_dir();
         let output_dir_mgr = OutputDirManager::new(output_dir);
 
         let (r1, r2) = rayon::join(
-            || self.run_inner(&output_dir_mgr),
-            || copy_assets(&assets_dir, &output_dir_mgr),
+            || self.process_content(&output_dir_mgr),
+            || self.process_assets(&output_dir_mgr),
         );
 
         match (r1, r2) {
@@ -89,12 +62,12 @@ impl Build {
                 error!("{e:#}");
                 ExitCode::FAILURE
             }
-            (Ok(true), Ok(())) => ExitCode::FAILURE,
-            (Ok(false), Ok(())) => ExitCode::SUCCESS,
+            (Ok(false), Ok(false)) => ExitCode::SUCCESS,
+            (Ok(_), Ok(_)) => ExitCode::FAILURE,
         }
     }
 
-    fn run_inner(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
+    fn process_content(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
         let alloc = Herd::new();
         let template_env = load_templates(&self.config.template_dir(), &alloc)?;
         let cx = ContentProcessorContext::new(
@@ -110,6 +83,12 @@ impl Build {
             ),
         );
         rayon::scope(|scope| ContentProcessor::new(scope, &cx).run())?;
+        Ok(cx.did_error.load(Ordering::Relaxed))
+    }
+
+    fn process_assets(&self, output_dir_mgr: &OutputDirManager) -> anyhow::Result<bool> {
+        let cx = AssetsProcessorContext::new(&self.config, output_dir_mgr);
+        rayon::scope(|scope| AssetsProcessor::new(scope, &cx).run())?;
         Ok(cx.did_error.load(Ordering::Relaxed))
     }
 }
