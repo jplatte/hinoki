@@ -204,6 +204,9 @@ impl<'c: 'sc, 's, 'sc> ContentProcessor<'c, 's, 'sc> {
             hinoki_cx: Arc<HinokiContext>,
         }
 
+        // apply_glob_config applies options in `config` only if they aren't set
+        // in `frontmatter`, so apply the highest-precedence ones first
+        // (within the config, globs go from lowest to highest precedence)
         for config in self.cx.config.content_file_settings.for_path(&source_path).rev() {
             frontmatter.apply_glob_config(config);
         }

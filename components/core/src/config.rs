@@ -119,6 +119,8 @@ impl ContentFileSettings {
         Ok(Self { values, globset })
     }
 
+    /// Get matching content file configs, in the order in which they were
+    /// written.
     pub(crate) fn for_path(
         &self,
         path: &Utf8Path,
