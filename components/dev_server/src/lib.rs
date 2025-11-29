@@ -16,7 +16,7 @@ use hinoki_core::{
 use hyper_util::service::TowerToHyperService;
 use tempfile::tempdir;
 use tower_http::services::ServeDir;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 pub fn run(config: Config, args: ServeArgs) -> ExitCode {
     let res = tokio::runtime::Builder::new_multi_thread()
@@ -139,6 +139,10 @@ async fn serve(config: &Config, args: ServeArgs) -> anyhow::Result<()> {
 
     let addr = SocketAddr::from((Ipv6Addr::LOCALHOST, args.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    match listener.local_addr() {
+        Ok(addr) => debug!("Listener bound to {addr:?}"),
+        Err(e) => debug!("Failed to obtain local_addr: {e}"),
+    }
 
     if args.open
         && let Err(err) = open::that(url)
@@ -148,7 +152,9 @@ async fn serve(config: &Config, args: ServeArgs) -> anyhow::Result<()> {
 
     let output_dir: Arc<Utf8Path> = Arc::from(&*config.output_dir());
     loop {
+        debug!("Waiting for connection");
         let (socket, _remote_addr) = listener.accept().await?;
+        debug!("Accepted connection from {_remote_addr:?}");
 
         let output_dir = Arc::clone(&output_dir);
         tokio::spawn(async move {
